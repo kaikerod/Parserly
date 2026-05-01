@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://user:pass@localhost:5432/ats_db"
     redis_url: str = "redis://localhost:6379/0"
 
+    openrouter_api_key: str = ""
+    openrouter_model: str = "google/gemini-flash-1.5"
+    openrouter_fallback_model: str = "openai/gpt-4o-mini"
+
     auth_cookie_name: str = "access_token"
     auth_cookie_secure: bool = True
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "strict"
