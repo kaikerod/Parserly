@@ -80,6 +80,7 @@ services:
         condition: service_started
     environment:
       API_BASE_URL: ${API_BASE_URL:-http://api:8000}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-access_token}
       NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED:-1}
     ports:
       - "${WEB_PORT:-3000}:3000"

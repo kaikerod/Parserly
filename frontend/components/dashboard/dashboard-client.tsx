@@ -1,8 +1,17 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { AlertCircle, FileSearch, Loader2, LockKeyhole, RotateCw } from "lucide-react";
-import { ApiError, submitResumeForAnalysis } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import {
+  AlertCircle,
+  ArrowUpRight,
+  FileSearch,
+  Loader2,
+  LogOut,
+  LockKeyhole,
+  RotateCw
+} from "lucide-react";
+import { ApiError, logout, submitResumeForAnalysis } from "@/lib/api";
 import type { AnalysisResponse } from "@/types/analysis";
 import { AnalysisReport } from "./analysis-report";
 import { Dropzone } from "./dropzone";
@@ -10,11 +19,19 @@ import { PaywallModal } from "./paywall-modal";
 
 type SubmissionMode = "manual" | "after-payment";
 
+const DASHBOARD_METRICS = [
+  { label: "Quota grátis", value: "3", detail: "análises por usuário" },
+  { label: "Arquivos", value: "PDF/DOCX", detail: "até 5 MB" },
+  { label: "Após limite", value: "PIX", detail: "checkout no modal" }
+];
+
 export function DashboardClient() {
+  const router = useRouter();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [submissionMode, setSubmissionMode] = useState<SubmissionMode>("manual");
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +54,11 @@ export function DashboardClient() {
         return;
       }
 
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        router.replace("/login");
+        return;
+      }
+
       setError(
         requestError instanceof Error
           ? requestError.message
@@ -45,7 +67,18 @@ export function DashboardClient() {
     } finally {
       setIsSubmitting(false);
     }
-  }, []);
+  }, [router]);
+
+  const handleLogout = useCallback(async () => {
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+    } finally {
+      router.replace("/login");
+      router.refresh();
+    }
+  }, [router]);
 
   const handlePaymentConfirmed = useCallback(() => {
     setPaywallOpen(false);
@@ -56,48 +89,100 @@ export function DashboardClient() {
   }, [pendingFile, runAnalysis]);
 
   return (
-    <main className="min-h-screen px-4 py-6 text-ink sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-8">
-        <header className="flex flex-col gap-5 border-b border-graphite/15 pb-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-graphite/15 bg-white px-3 py-1 text-xs font-bold uppercase text-graphite/70 shadow-tool">
-              <FileSearch className="h-4 w-4 text-teal" aria-hidden="true" />
-              ATS Resume Analyzer
+    <main className="relative min-h-screen overflow-hidden px-4 py-5 text-paper sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 bg-[linear-gradient(115deg,rgba(109,93,252,0.22),transparent_42%),linear-gradient(250deg,rgba(69,255,115,0.12),transparent_36%)]" />
+
+      <div className="mx-auto flex max-w-7xl flex-col gap-7">
+        <nav className="flex items-center justify-between border-b border-line/55 pb-4 text-xs text-paper/60">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-violet text-paper shadow-glow">
+              <FileSearch className="h-5 w-5" aria-hidden="true" />
             </div>
-            <h1 className="mt-4 max-w-3xl font-display text-4xl font-semibold leading-tight text-ink md:text-5xl">
-              Dashboard de análise de currículo
-            </h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-graphite/75">
-              Envie um PDF ou DOCX, receba a nota ATS e veja as correções que mais impactam sua
-              próxima candidatura.
-            </p>
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="font-display text-base font-semibold text-paper">Parserly</span>
+              <span className="hidden text-paper/30 sm:inline">/</span>
+              <span className="hidden truncate sm:inline">Análise ATS para currículos</span>
+            </div>
           </div>
 
-          <div className="grid gap-2 text-sm sm:grid-cols-2 lg:w-[26rem]">
-            <div className="rounded-md border border-graphite/15 bg-white px-4 py-3 shadow-tool">
-              <p className="text-xs font-semibold uppercase text-graphite/55">Quota grátis</p>
-              <p className="mt-1 font-semibold">3 análises por usuário</p>
+          <div className="hidden items-center gap-6 md:flex">
+            <span>Produto</span>
+            <span>Guias</span>
+            <span>Pagamento</span>
+            <span>Equipe</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoggingOut ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+            )}
+            Sair
+          </button>
+        </nav>
+
+        <header className="grid gap-6 border-b border-line/55 pb-7 lg:grid-cols-[1fr_32rem] lg:items-end">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-md border border-line/70 bg-graphite/80 px-3 py-1.5 text-xs font-bold uppercase text-paper/70 shadow-tool backdrop-blur">
+              <FileSearch className="h-4 w-4 text-acid" aria-hidden="true" />
+              ATS Resume Analyzer
             </div>
-            <div className="rounded-md border border-graphite/15 bg-white px-4 py-3 shadow-tool">
-              <p className="text-xs font-semibold uppercase text-graphite/55">Após o limite</p>
-              <p className="mt-1 font-semibold">PIX avulso no modal</p>
+            <h1 className="mt-5 max-w-3xl font-display text-5xl font-semibold leading-none text-paper md:text-6xl">
+              Seu currículo.
+              <br />
+              Claramente <span className="accent-text">estruturado.</span>
+            </h1>
+            <div className="mt-5 flex max-w-2xl flex-col gap-4 text-sm leading-6 text-paper/65 sm:flex-row sm:items-center">
+              <p>
+                Envie um PDF ou DOCX, receba a nota ATS e veja as correções que mais impactam sua
+                próxima candidatura.
+              </p>
+              <a
+                href="#upload-panel"
+                className="focus-ring inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-md bg-acid px-4 py-2 text-sm font-bold text-ink shadow-acid transition hover:-translate-y-0.5 hover:bg-mint"
+              >
+                Iniciar
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+              </a>
             </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+            {DASHBOARD_METRICS.map((metric) => (
+              <div
+                key={metric.label}
+                className="rounded-md border border-line/70 bg-graphite/80 p-4 shadow-tool backdrop-blur"
+              >
+                <p className="text-xs font-semibold uppercase text-paper/45">{metric.label}</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-copper">
+                  {metric.value}
+                </p>
+                <p className="mt-1 text-xs text-paper/55">{metric.detail}</p>
+              </div>
+            ))}
           </div>
         </header>
 
-        <div className="grid gap-8 lg:grid-cols-[25rem_1fr]">
+        <div className="grid gap-5 lg:grid-cols-[25rem_1fr]">
           <section
+            id="upload-panel"
             aria-labelledby="upload-title"
-            className="rounded-md border border-graphite/15 bg-paper/90 p-5 shadow-paper"
+            className="rounded-md border border-line/75 bg-graphite/90 p-5 shadow-panel backdrop-blur"
           >
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase text-teal">Upload</p>
+                <p className="text-xs font-semibold uppercase text-acid">Upload</p>
                 <h2 id="upload-title" className="mt-1 font-display text-2xl font-semibold">
                   Novo currículo
                 </h2>
               </div>
-              <LockKeyhole className="h-6 w-6 text-graphite/45" aria-hidden="true" />
+              <LockKeyhole className="h-6 w-6 text-paper/30" aria-hidden="true" />
             </div>
 
             <Dropzone
@@ -107,8 +192,8 @@ export function DashboardClient() {
             />
 
             {isSubmitting ? (
-              <div className="mt-5 flex items-center gap-3 rounded-md border border-teal/25 bg-teal/10 px-4 py-3 text-sm text-ink">
-                <Loader2 className="h-5 w-5 animate-spin text-teal" aria-hidden="true" />
+              <div className="mt-5 flex items-center gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
+                <Loader2 className="h-5 w-5 animate-spin text-acid" aria-hidden="true" />
                 {submissionMode === "after-payment"
                   ? "Pagamento confirmado. Análise iniciada automaticamente."
                   : "Enviando e analisando o currículo..."}
@@ -116,7 +201,7 @@ export function DashboardClient() {
             ) : null}
 
             {error ? (
-              <div className="mt-5 flex items-start gap-3 rounded-md border border-coral/30 bg-coral/10 px-4 py-3 text-sm text-ink">
+              <div className="mt-5 flex items-start gap-3 rounded-md border border-coral/35 bg-coral/10 px-4 py-3 text-sm text-paper">
                 <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral" aria-hidden="true" />
                 <p>{error}</p>
               </div>
@@ -131,7 +216,7 @@ export function DashboardClient() {
                   }
                 }}
                 disabled={isSubmitting || !selectedFile}
-                className="focus-ring mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-graphite/15 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+                className="focus-ring mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-line/80 bg-night px-4 py-2 text-sm font-semibold text-paper transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RotateCw className="h-4 w-4" aria-hidden="true" />
                 Reanalisar arquivo selecionado
@@ -139,7 +224,7 @@ export function DashboardClient() {
             ) : null}
           </section>
 
-          <div className="min-w-0 rounded-md border border-graphite/15 bg-paper/90 p-5 shadow-paper">
+          <div className="min-w-0 rounded-md border border-line/75 bg-graphite/85 p-5 shadow-panel backdrop-blur">
             {analysis ? (
               <AnalysisReport analysis={analysis} />
             ) : (
@@ -161,21 +246,44 @@ export function DashboardClient() {
 
 function EmptyReportState({ isSubmitting }: { isSubmitting: boolean }) {
   return (
-    <section className="flex min-h-[34rem] flex-col items-center justify-center rounded-md border border-dashed border-graphite/20 bg-white/60 px-6 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-md bg-ink text-paper shadow-tool">
+    <section className="panel-grid flex min-h-[34rem] flex-col items-center justify-center rounded-md border border-dashed border-line/75 bg-night/50 px-6 py-10 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-md bg-violet text-paper shadow-tool">
         {isSubmitting ? (
           <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
         ) : (
           <FileSearch className="h-7 w-7" aria-hidden="true" />
         )}
       </div>
-      <h2 className="mt-5 font-display text-2xl font-semibold text-ink">
+      <h2 className="mt-5 font-display text-3xl font-semibold text-paper">
         {isSubmitting ? "Preparando relatório" : "Seu relatório aparecerá aqui"}
       </h2>
-      <p className="mt-3 max-w-lg text-sm leading-6 text-graphite/70">
-        A página permanece no dashboard: quando a análise retorna, a nota, os diagnósticos por
-        categoria e as recomendações priorizadas são renderizados neste espaço.
+      <p className="mt-3 max-w-lg text-sm leading-6 text-paper/60">
+        Quando a análise retornar, a nota, os diagnósticos por categoria e as recomendações
+        priorizadas serão renderizados neste espaço.
       </p>
+
+      <div className="mt-8 grid w-full max-w-2xl gap-3 text-left sm:grid-cols-3">
+        <div className="rounded-md border border-line/70 bg-graphite/85 p-4">
+          <p className="text-xs font-semibold uppercase text-paper/45">Score ATS</p>
+          <p className="mt-3 font-display text-4xl font-semibold text-acid">82</p>
+          <div className="mt-3 h-2 rounded-full bg-line/70">
+            <div className="h-full w-4/5 rounded-full bg-acid" />
+          </div>
+        </div>
+        <div className="rounded-md border border-line/70 bg-graphite/85 p-4">
+          <p className="text-xs font-semibold uppercase text-paper/45">Estrutura</p>
+          <div className="mt-4 space-y-2">
+            <div className="h-2 w-11/12 rounded-full bg-violet" />
+            <div className="h-2 w-8/12 rounded-full bg-paper/20" />
+            <div className="h-2 w-10/12 rounded-full bg-paper/20" />
+          </div>
+        </div>
+        <div className="rounded-md border border-line/70 bg-graphite/85 p-4">
+          <p className="text-xs font-semibold uppercase text-paper/45">Prioridade</p>
+          <p className="mt-3 font-display text-3xl font-semibold text-copper">Alta</p>
+          <p className="mt-2 text-xs text-paper/55">palavras-chave</p>
+        </div>
+      </div>
     </section>
   );
 }

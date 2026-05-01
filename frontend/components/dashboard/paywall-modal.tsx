@@ -74,7 +74,7 @@ export function PaywallModal({
           margin: 1,
           errorCorrectionLevel: "M",
           color: {
-            dark: "#191916",
+            dark: "#121211",
             light: "#ffffff"
           }
         });
@@ -156,7 +156,9 @@ export function PaywallModal({
       handleStreamEvent((event as MessageEvent<string>).data, "payment_expired");
     });
     eventSource.onerror = () => {
-      setError("Conexão de confirmação instável. O sistema continuará tentando enquanto o QR estiver ativo.");
+      setError(
+        "Conexão de confirmação instável. O sistema continuará tentando enquanto o QR estiver ativo."
+      );
     };
 
     return () => eventSource.close();
@@ -201,26 +203,26 @@ export function PaywallModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/75 px-4 py-6 backdrop-blur-md"
       role="presentation"
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="paywall-title"
-        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-md border border-paper/25 bg-paper shadow-paper"
+        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-md border border-line bg-graphite text-paper shadow-paper"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-graphite/15 px-5 py-4 sm:px-6">
+        <div className="flex items-start justify-between gap-4 border-b border-line/70 px-5 py-4 sm:px-6">
           <div>
-            <p className="text-xs font-semibold uppercase text-coral">Limite gratuito atingido</p>
-            <h2 id="paywall-title" className="mt-1 font-display text-2xl font-semibold text-ink">
+            <p className="text-xs font-semibold uppercase text-copper">Limite gratuito atingido</p>
+            <h2 id="paywall-title" className="mt-1 font-display text-2xl font-semibold">
               Pague via PIX para continuar a análise
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-graphite/15 bg-white text-graphite transition hover:bg-fog"
+            className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line bg-night text-paper transition hover:border-acid/45 hover:bg-fog"
             aria-label="Fechar modal de pagamento"
           >
             <X className="h-5 w-5" aria-hidden="true" />
@@ -229,16 +231,16 @@ export function PaywallModal({
 
         <div className="grid gap-6 px-5 py-6 sm:px-6 lg:grid-cols-[1fr_19rem]">
           <div className="space-y-5">
-            <div className="rounded-md border border-graphite/15 bg-white p-5 shadow-tool">
+            <div className="rounded-md border border-line/70 bg-night p-5 shadow-tool">
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-ink text-paper">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-violet text-paper shadow-glow">
                   <CreditCard className="h-5 w-5" aria-hidden="true" />
                 </div>
                 <div>
-                  <p className="font-semibold text-ink">
+                  <p className="font-semibold text-paper">
                     Você atingiu o limite de 3 análises gratuitas.
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-graphite/70">
+                  <p className="mt-2 text-sm leading-6 text-paper/60">
                     A análise de {fileName ?? "currículo selecionado"} será iniciada
                     automaticamente após a confirmação do pagamento.
                   </p>
@@ -247,14 +249,14 @@ export function PaywallModal({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-md border border-graphite/15 bg-white p-4">
-                <p className="text-xs font-semibold uppercase text-graphite/60">Valor avulso</p>
-                <p className="mt-2 font-display text-3xl font-semibold text-ink">{amount}</p>
+              <div className="rounded-md border border-line/70 bg-night p-4">
+                <p className="text-xs font-semibold uppercase text-paper/45">Valor avulso</p>
+                <p className="mt-2 font-display text-3xl font-semibold text-copper">{amount}</p>
               </div>
-              <div className="rounded-md border border-graphite/15 bg-white p-4">
-                <p className="text-xs font-semibold uppercase text-graphite/60">Método</p>
-                <p className="mt-2 flex items-center gap-2 font-display text-3xl font-semibold text-ink">
-                  <QrCode className="h-7 w-7 text-teal" aria-hidden="true" />
+              <div className="rounded-md border border-line/70 bg-night p-4">
+                <p className="text-xs font-semibold uppercase text-paper/45">Método</p>
+                <p className="mt-2 flex items-center gap-2 font-display text-3xl font-semibold text-paper">
+                  <QrCode className="h-7 w-7 text-acid" aria-hidden="true" />
                   PIX
                 </p>
               </div>
@@ -264,34 +266,34 @@ export function PaywallModal({
               <button
                 type="button"
                 onClick={handleCreateCharge}
-                className="focus-ring inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md bg-ink px-5 py-3 text-sm font-bold text-paper transition hover:bg-graphite"
+                className="focus-ring inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md bg-acid px-5 py-3 text-sm font-bold text-ink shadow-acid transition hover:-translate-y-0.5 hover:bg-mint"
               >
                 <CreditCard className="h-5 w-5" aria-hidden="true" />
-                Pagar e Analisar
+                Pagar e analisar
               </button>
             ) : null}
 
             {phase === "creating" ? (
-              <div className="flex items-center gap-3 rounded-md border border-teal/25 bg-teal/10 px-4 py-3 text-sm text-ink">
-                <Loader2 className="h-5 w-5 animate-spin text-teal" aria-hidden="true" />
+              <div className="flex items-center gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
+                <Loader2 className="h-5 w-5 animate-spin text-acid" aria-hidden="true" />
                 Gerando cobrança PIX...
               </div>
             ) : null}
 
             {phase === "confirmed" ? (
-              <div className="flex items-center gap-3 rounded-md border border-moss/25 bg-mint/40 px-4 py-3 text-sm font-semibold text-ink">
-                <ShieldCheck className="h-5 w-5 text-moss" aria-hidden="true" />
+              <div className="flex items-center gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm font-semibold text-paper">
+                <ShieldCheck className="h-5 w-5 text-acid" aria-hidden="true" />
                 Pagamento confirmado. Iniciando análise automaticamente.
               </div>
             ) : null}
 
             {phase === "expired" ? (
-              <div className="space-y-3 rounded-md border border-amber/35 bg-amber/10 px-4 py-3 text-sm text-ink">
+              <div className="space-y-3 rounded-md border border-amber/35 bg-amber/10 px-4 py-3 text-sm text-paper">
                 <p className="font-semibold">Este QR Code expirou sem confirmação de pagamento.</p>
                 <button
                   type="button"
                   onClick={handleCreateCharge}
-                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-amber/35 bg-white px-4 py-2 font-semibold text-ink transition hover:bg-paper"
+                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-amber/35 bg-night px-4 py-2 font-semibold text-paper transition hover:border-acid/40 hover:bg-fog"
                 >
                   <RefreshCcw className="h-4 w-4" aria-hidden="true" />
                   Gerar novo QR Code
@@ -300,23 +302,23 @@ export function PaywallModal({
             ) : null}
 
             {error ? (
-              <div className="rounded-md border border-coral/30 bg-coral/10 px-4 py-3 text-sm text-ink">
+              <div className="rounded-md border border-coral/35 bg-coral/10 px-4 py-3 text-sm text-paper">
                 {error}
               </div>
             ) : null}
           </div>
 
-          <aside className="rounded-md border border-graphite/15 bg-white p-4 shadow-tool">
+          <aside className="rounded-md border border-line/70 bg-night p-4 shadow-tool">
             {charge ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-ink">QR Code PIX</p>
-                  <span className="rounded-full border border-graphite/15 bg-paper px-3 py-1 text-xs font-semibold text-graphite/70">
+                  <p className="text-sm font-semibold text-paper">QR Code PIX</p>
+                  <span className="rounded-md border border-line/70 bg-graphite px-3 py-1 text-xs font-semibold text-paper/70">
                     {formatRemainingTime(remainingSeconds)}
                   </span>
                 </div>
 
-                <div className="flex aspect-square items-center justify-center rounded-md border border-graphite/15 bg-paper p-3">
+                <div className="flex aspect-square items-center justify-center rounded-md border border-line/70 bg-paper p-3">
                   {qrCodeSrc ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -325,22 +327,22 @@ export function PaywallModal({
                       className="h-full w-full object-contain"
                     />
                   ) : (
-                    <QrCode className="h-24 w-24 text-graphite/35" aria-hidden="true" />
+                    <QrCode className="h-24 w-24 text-ink/35" aria-hidden="true" />
                   )}
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase text-graphite/60">
+                    <p className="text-xs font-semibold uppercase text-paper/50">
                       Código copia e cola
                     </p>
                     <button
                       type="button"
                       onClick={handleCopyPixCode}
-                      className="focus-ring inline-flex min-h-9 items-center gap-2 rounded-md border border-graphite/15 bg-paper px-3 py-2 text-xs font-semibold text-ink transition hover:bg-fog"
+                      className="focus-ring inline-flex min-h-9 items-center gap-2 rounded-md border border-line/70 bg-graphite px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/45 hover:bg-fog"
                     >
                       {copyState === "copied" ? (
-                        <Check className="h-4 w-4 text-moss" aria-hidden="true" />
+                        <Check className="h-4 w-4 text-acid" aria-hidden="true" />
                       ) : (
                         <Copy className="h-4 w-4" aria-hidden="true" />
                       )}
@@ -350,17 +352,17 @@ export function PaywallModal({
                   <textarea
                     readOnly
                     value={charge.pix_copy_paste}
-                    className="no-scrollbar h-28 w-full resize-none rounded-md border border-graphite/15 bg-paper p-3 font-mono text-xs leading-5 text-graphite focus:outline-none"
+                    className="no-scrollbar h-28 w-full resize-none rounded-md border border-line/70 bg-graphite p-3 font-mono text-xs leading-5 text-paper/70 focus:outline-none"
                     aria-label="Código PIX copia e cola"
                   />
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-[26rem] flex-col items-center justify-center rounded-md border border-dashed border-graphite/20 bg-paper px-4 text-center">
-                <QrCode className="h-14 w-14 text-graphite/30" aria-hidden="true" />
-                <p className="mt-4 text-sm font-semibold text-ink">Checkout dentro do modal</p>
-                <p className="mt-2 text-sm leading-6 text-graphite/65">
-                  Clique em Pagar e Analisar para gerar o QR Code PIX.
+              <div className="panel-grid flex min-h-[26rem] flex-col items-center justify-center rounded-md border border-dashed border-line/75 bg-graphite/70 px-4 text-center">
+                <QrCode className="h-14 w-14 text-paper/30" aria-hidden="true" />
+                <p className="mt-4 text-sm font-semibold text-paper">Checkout dentro do modal</p>
+                <p className="mt-2 text-sm leading-6 text-paper/60">
+                  Clique em Pagar e analisar para gerar o QR Code PIX.
                 </p>
               </div>
             )}
@@ -386,7 +388,8 @@ function normalizeQrCodeSource(value: string | undefined) {
   }
 
   const compactValue = trimmed.replace(/^base64,/, "").replace(/\s/g, "");
-  const looksLikeBase64Image = compactValue.length > 100 && /^[A-Za-z0-9+/]+={0,2}$/.test(compactValue);
+  const looksLikeBase64Image =
+    compactValue.length > 100 && /^[A-Za-z0-9+/]+={0,2}$/.test(compactValue);
 
   return looksLikeBase64Image ? `data:image/png;base64,${compactValue}` : null;
 }

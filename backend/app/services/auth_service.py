@@ -195,7 +195,7 @@ class AuthService:
 
     def _build_magic_link(self, token: UUID) -> str:
         app_url = self.settings.app_url.rstrip("/")
-        return f"{app_url}/api/v1/auth/verify?token={token}"
+        return f"{app_url}/auth/verify?token={token}"
 
     @staticmethod
     def _magic_link_key(token: UUID) -> str:

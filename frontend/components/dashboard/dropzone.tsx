@@ -66,10 +66,10 @@ export function Dropzone({ disabled = false, selectedFile, onFileAccepted }: Dro
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={[
-          "focus-ring group flex min-h-[18rem] cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-8 text-center transition",
+          "focus-ring group panel-grid flex min-h-[18rem] cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-8 text-center transition",
           isDragging
-            ? "border-teal bg-mint/35 shadow-tool"
-            : "border-graphite/25 bg-white/70 hover:border-teal hover:bg-white",
+            ? "border-acid bg-acid/10 shadow-panel"
+            : "border-line bg-night/40 hover:border-acid/70 hover:bg-night/60",
           disabled ? "pointer-events-none opacity-70" : ""
         ].join(" ")}
         tabIndex={0}
@@ -89,44 +89,44 @@ export function Dropzone({ disabled = false, selectedFile, onFileAccepted }: Dro
           disabled={disabled}
         />
 
-        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-md border border-graphite/15 bg-ink text-paper shadow-tool transition group-hover:-translate-y-1">
+        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-md border border-acid/30 bg-acid text-ink shadow-tool transition group-hover:-translate-y-1">
           <UploadCloud className="h-7 w-7" aria-hidden="true" />
         </div>
 
         <div className="max-w-md space-y-2">
-          <p className="font-display text-2xl font-semibold leading-tight text-ink">
+          <p className="font-display text-2xl font-semibold leading-tight text-paper">
             Solte seu currículo aqui
           </p>
-          <p className="text-sm leading-6 text-graphite/70">
+          <p className="text-sm leading-6 text-paper/60">
             Aceitamos PDF ou DOCX até 5 MB. A validação acontece antes do envio.
           </p>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs font-semibold uppercase text-graphite/65">
-          <span className="rounded-full border border-graphite/15 bg-paper px-3 py-1">PDF</span>
-          <span className="rounded-full border border-graphite/15 bg-paper px-3 py-1">DOCX</span>
-          <span className="rounded-full border border-graphite/15 bg-paper px-3 py-1">5 MB</span>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs font-semibold uppercase text-paper/60">
+          <span className="rounded-md border border-line/70 bg-graphite px-3 py-1">PDF</span>
+          <span className="rounded-md border border-line/70 bg-graphite px-3 py-1">DOCX</span>
+          <span className="rounded-md border border-line/70 bg-graphite px-3 py-1">5 MB</span>
         </div>
       </label>
 
       {selectedFile ? (
-        <div className="flex items-start gap-3 rounded-md border border-graphite/15 bg-white px-4 py-3 shadow-tool">
-          <FileText className="mt-0.5 h-5 w-5 shrink-0 text-teal" aria-hidden="true" />
+        <div className="flex items-start gap-3 rounded-md border border-line/70 bg-night px-4 py-3 shadow-tool">
+          <FileText className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-ink">{selectedFile.name}</p>
-            <p className="text-xs text-graphite/65">{formatFileSize(selectedFile.size)}</p>
+            <p className="truncate text-sm font-semibold text-paper">{selectedFile.name}</p>
+            <p className="text-xs text-paper/55">{formatFileSize(selectedFile.size)}</p>
           </div>
         </div>
       ) : null}
 
       {error ? (
-        <div className="flex items-start gap-3 rounded-md border border-coral/30 bg-coral/10 px-4 py-3 text-sm text-ink">
+        <div className="flex items-start gap-3 rounded-md border border-coral/35 bg-coral/10 px-4 py-3 text-sm text-paper">
           <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral" aria-hidden="true" />
           <p>{error}</p>
         </div>
       ) : (
-        <div className="flex items-start gap-3 text-sm text-graphite/70">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-moss" aria-hidden="true" />
+        <div className="flex items-start gap-3 text-sm text-paper/60">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-teal" aria-hidden="true" />
           <p>O arquivo é enviado apenas quando passa pelas regras de formato e tamanho.</p>
         </div>
       )}

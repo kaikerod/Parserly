@@ -3,17 +3,19 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
-  --background: #f6f6ef;
-  --foreground: #191916;
+  color-scheme: dark;
+  --background: #121211;
+  --foreground: #f4f1ea;
 }
 
 * {
   box-sizing: border-box;
+  letter-spacing: 0;
 }
 
 html {
   min-height: 100%;
+  background: var(--background);
 }
 
 body {
@@ -21,11 +23,13 @@ body {
   margin: 0;
   color: var(--foreground);
   background:
-    linear-gradient(90deg, rgba(25, 25, 22, 0.045) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(25, 25, 22, 0.045) 1px, transparent 1px),
-    linear-gradient(135deg, rgba(184, 226, 200, 0.18), transparent 34rem),
-    #f6f6ef;
-  background-size: 44px 44px, 44px 44px, auto, auto;
+    linear-gradient(90deg, rgba(244, 241, 234, 0.045) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(244, 241, 234, 0.045) 1px, transparent 1px),
+    linear-gradient(118deg, rgba(109, 93, 252, 0.2), transparent 30rem),
+    linear-gradient(235deg, rgba(69, 255, 115, 0.11), transparent 28rem),
+    linear-gradient(180deg, #151515 0%, #101011 54%, #0b0b0c 100%);
+  background-attachment: fixed;
+  background-size: 76px 76px, 76px 76px, auto, auto, auto;
 }
 
 button,
@@ -39,8 +43,8 @@ button {
 }
 
 ::selection {
-  color: #191916;
-  background: #b8e2c8;
+  color: #121211;
+  background: #45ff73;
 }
 
 .focus-ring {
@@ -48,7 +52,9 @@ button {
 }
 
 .focus-ring:focus-visible {
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.28);
+  box-shadow:
+    0 0 0 2px #121211,
+    0 0 0 5px rgba(69, 255, 115, 0.62);
 }
 
 .no-scrollbar {
@@ -58,4 +64,18 @@ button {
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+.accent-text {
+  background: linear-gradient(90deg, #6d5dfc 0%, #a18bff 56%, #45ff73 120%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.panel-grid {
+  background-image:
+    linear-gradient(90deg, rgba(244, 241, 234, 0.045) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(244, 241, 234, 0.045) 1px, transparent 1px);
+  background-size: 36px 36px;
 }
