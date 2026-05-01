@@ -9,6 +9,7 @@ export const metadata: Metadata = {
 interface LoginPageProps {
   searchParams?: {
     error?: string | string[];
+    reason?: string | string[];
   };
 }
 
@@ -22,6 +23,18 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
   const errorCode = Array.isArray(searchParams?.error)
     ? searchParams?.error[0]
     : searchParams?.error;
+  const reasonCode = Array.isArray(searchParams?.reason)
+    ? searchParams?.reason[0]
+    : searchParams?.reason;
+  const initialNotice =
+    reasonCode === "free-limit"
+      ? "Você usou as 3 análises grátis. Cadastre seu e-mail para continuar."
+      : undefined;
 
-  return <LoginClient initialError={errorCode ? LOGIN_ERROR_MESSAGES[errorCode] : undefined} />;
+  return (
+    <LoginClient
+      initialError={errorCode ? LOGIN_ERROR_MESSAGES[errorCode] : undefined}
+      initialNotice={initialNotice}
+    />
+  );
 }

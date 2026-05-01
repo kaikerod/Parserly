@@ -9,7 +9,8 @@ import {
   Loader2,
   LogOut,
   LockKeyhole,
-  RotateCw
+  RotateCw,
+  UserPlus
 } from "lucide-react";
 import { ApiError, logout, submitResumeForAnalysis } from "@/lib/api";
 import type { AnalysisResponse } from "@/types/analysis";
@@ -19,14 +20,27 @@ import { PaywallModal } from "./paywall-modal";
 
 type SubmissionMode = "manual" | "after-payment";
 
-const DASHBOARD_METRICS = [
-  { label: "Quota grátis", value: "3", detail: "análises por usuário" },
+const AUTHENTICATED_DASHBOARD_METRICS = [
+  { label: "Quota grátis", value: "3", detail: "análises por conta" },
   { label: "Arquivos", value: "PDF/DOCX", detail: "até 5 MB" },
   { label: "Após limite", value: "PIX", detail: "checkout no modal" }
 ];
 
-export function DashboardClient() {
+const GUEST_DASHBOARD_METRICS = [
+  { label: "Sem cadastro", value: "3", detail: "análises grátis" },
+  { label: "Arquivos", value: "PDF/DOCX", detail: "até 5 MB" },
+  { label: "Após limite", value: "Cadastro", detail: "magic link por e-mail" }
+];
+
+interface DashboardClientProps {
+  isAuthenticated: boolean;
+}
+
+export function DashboardClient({ isAuthenticated }: DashboardClientProps) {
   const router = useRouter();
+  const dashboardMetrics = isAuthenticated
+    ? AUTHENTICATED_DASHBOARD_METRICS
+    : GUEST_DASHBOARD_METRICS;
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
@@ -55,7 +69,9 @@ export function DashboardClient() {
       }
 
       if (requestError instanceof ApiError && requestError.status === 401) {
-        router.replace("/login");
+        router.replace(
+          isRegistrationRequiredError(requestError) ? "/login?reason=free-limit" : "/login"
+        );
         return;
       }
 
@@ -112,19 +128,29 @@ export function DashboardClient() {
             <span>Equipe</span>
           </div>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            disabled={isLoggingOut}
-            className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isLoggingOut ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-            )}
-            Sair
-          </button>
+          {isAuthenticated ? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLoggingOut ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+              )}
+              Sair
+            </button>
+          ) : (
+            <a
+              href="/login"
+              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
+            >
+              <UserPlus className="h-4 w-4" aria-hidden="true" />
+              Cadastrar
+            </a>
+          )}
         </nav>
 
         <header className="grid gap-6 border-b border-line/55 pb-7 lg:grid-cols-[1fr_32rem] lg:items-end">
@@ -154,7 +180,7 @@ export function DashboardClient() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-            {DASHBOARD_METRICS.map((metric) => (
+            {dashboardMetrics.map((metric) => (
               <div
                 key={metric.label}
                 className="rounded-md border border-line/70 bg-graphite/80 p-4 shadow-tool backdrop-blur"
@@ -286,4 +312,17 @@ function EmptyReportState({ isSubmitting }: { isSubmitting: boolean }) {
       </div>
     </section>
   );
+}
+
+function isRegistrationRequiredError(error: ApiError) {
+  if (!isRecord(error.detail)) {
+    return false;
+  }
+
+  const detail = error.detail.detail;
+  return isRecord(detail) && detail.error === "registration_required";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

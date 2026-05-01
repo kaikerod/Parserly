@@ -37,8 +37,9 @@ Uma aplicação web que:
 
 **Incluído:**
 - Upload de arquivo PDF/DOCX.
-- Identificação de usuário por e-mail (sem senha, via Magic Link ou token de sessão — ver seção 3.1).
-- Contagem de análises por usuário (quota gratuita: 3).
+- Até 3 análises gratuitas para visitantes sem cadastro.
+- Identificação/cadastro por e-mail obrigatório após o visitante consumir os 3 usos grátis (sem senha, via Magic Link — ver seção 3.1).
+- Contagem de análises por visitante anônimo e por usuário cadastrado.
 - Integração com OpenRouter para processamento via IA.
 - Paywall ativo após esgotamento da quota gratuita, com checkout via AbacatePay.
 - Relatório de análise estruturado exibido na interface.
@@ -136,21 +137,23 @@ app/
 
 # 3. Fluxo de Usuário
 
-## 3.1 Autenticação e Identificação
+## 3.1 Autenticação, Cadastro e Identificação
 
-O sistema utiliza **Magic Link** para identificação do usuário sem exigir cadastro com senha.
+O sistema permite o primeiro uso como visitante e utiliza **Magic Link** para cadastro/identificação do usuário sem exigir senha. O cadastro passa a ser obrigatório após o visitante consumir os 3 usos grátis.
 
 **Fluxo:**
 
 ```
-1. Usuário acessa a página inicial
-2. Insere seu endereço de e-mail no campo de identificação
-3. Backend gera token único (UUID v4, TTL: 15 minutos) e armazena no Redis
-4. Backend envia e-mail com link de acesso (ex: /auth/verify?token=<UUID>)
-5. Usuário clica no link
-6. Backend valida token → cria sessão JWT (HTTPOnly cookie, TTL: 7 dias)
-7. Usuário é redirecionado ao dashboard de upload
-8. Caso o e-mail não exista no banco, cria registro de usuário automaticamente
+1. Visitante acessa a página inicial e pode iniciar a análise sem cadastro
+2. Backend identifica o visitante por cookie HTTPOnly e contabiliza usos no Redis
+3. Após 3 análises gratuitas, nova tentativa retorna `registration_required`
+4. Frontend direciona o visitante ao cadastro por e-mail
+5. Backend gera token único (UUID v4, TTL: 15 minutos) e armazena no Redis
+6. Backend envia e-mail com link de acesso (ex: /auth/verify?token=<UUID>)
+7. Usuário clica no link
+8. Backend valida token → cria sessão JWT (HTTPOnly cookie, TTL: 7 dias)
+9. Usuário é redirecionado ao dashboard de upload
+10. Caso o e-mail não exista no banco, cria registro de usuário automaticamente
 ```
 
 **Nota de implementação:** O token Magic Link deve ser invalidado no Redis imediatamente após primeiro uso (one-time use).
@@ -158,12 +161,14 @@ O sistema utiliza **Magic Link** para identificação do usuário sem exigir cad
 ## 3.2 Upload e Análise (Quota Gratuita)
 
 ```
-1. Usuário (autenticado) faz upload do arquivo na dropzone
+1. Visitante ou usuário autenticado faz upload do arquivo na dropzone
 2. Frontend valida: tipo de arquivo (PDF/DOCX), tamanho máximo (5 MB)
 3. Frontend envia arquivo via POST /api/v1/analysis (multipart/form-data)
 4. Backend executa verificação de quota:
-   ├── SE análises_usadas < 3: prossegue para extração
-   └── SE análises_usadas >= 3: retorna HTTP 402 → Frontend exibe paywall
+   ├── SE visitante_anônimo e usos_grátis < 3: prossegue para extração
+   ├── SE visitante_anônimo e usos_grátis >= 3: retorna HTTP 401 `registration_required` → Frontend direciona ao cadastro
+   ├── SE usuário autenticado e análises_usadas < 3: prossegue para extração
+   └── SE usuário autenticado e análises_usadas >= 3: retorna HTTP 402 → Frontend exibe paywall
 5. Backend extrai texto do arquivo (pdfplumber ou python-docx)
 6. Backend envia texto ao OpenRouter (modelo configurado) com prompt ATS
 7. Backend aguarda resposta da IA (timeout: 60s)
@@ -197,27 +202,39 @@ O sistema utiliza **Magic Link** para identificação do usuário sem exigir cad
 ## 3.4 Diagrama de Estados do Usuário
 
 ```
-[Anônimo] ──(insere e-mail)──► [Aguardando Magic Link]
-                                        │
-                              (clica no link)
-                                        │
-                                        ▼
-                              [Autenticado - Free]
-                              (análises_usadas: 0–2)
-                                        │
-                              (faz análise)
-                                        │
-                                        ▼
-                              [Free - Quota Esgotada]
-                              (análises_usadas: 3)
-                                        │
-                              (paga via AbacatePay)
-                                        │
-                              (webhook confirmado)
-                                        │
-                                        ▼
-                              [Crédito Adicionado]
-                              (pode fazer 1 nova análise)
+[Anônimo - Free]
+(usos_grátis: 0–2)
+        │
+(faz análise)
+        │
+        ▼
+[Cadastro Obrigatório]
+(usos_grátis: 3)
+        │
+(insere e-mail)
+        │
+        ▼
+[Aguardando Magic Link]
+        │
+(clica no link)
+        │
+        ▼
+[Autenticado - Free]
+(análises_usadas: 0–2)
+        │
+(faz análise)
+        │
+        ▼
+[Free - Quota Esgotada]
+(análises_usadas: 3)
+        │
+(paga via AbacatePay)
+        │
+(webhook confirmado)
+        │
+        ▼
+[Crédito Adicionado]
+(pode fazer 1 nova análise)
 ```
 
 ---
@@ -228,21 +245,22 @@ As histórias estão ordenadas por prioridade para o MVP.
 
 ## US-01 — Identificação por E-mail
 
-**Como** visitante sem conta,
+**Como** visitante que consumiu os 3 usos grátis,
 **quero** inserir meu e-mail para receber um link de acesso,
-**para que** eu possa usar a plataforma sem criar senha.
+**para que** eu possa me cadastrar e continuar usando a plataforma sem criar senha.
 
 **Critérios de Aceite:**
 - O sistema aceita apenas endereços de e-mail com formato válido (RFC 5322).
 - O link de acesso expira em 15 minutos.
 - O link é invalidado após o primeiro uso.
 - Se o e-mail ainda não existe no banco, um registro de usuário é criado automaticamente.
+- O cadastro só é exigido para visitantes após a terceira análise gratuita.
 
 ---
 
 ## US-02 — Upload e Análise de Currículo (Quota Gratuita)
 
-**Como** usuário autenticado com menos de 3 análises usadas,
+**Como** visitante com menos de 3 usos grátis ou usuário autenticado com quota disponível,
 **quero** fazer upload do meu currículo em PDF ou DOCX,
 **para que** eu receba uma nota de otimização ATS e recomendações.
 
@@ -252,6 +270,7 @@ As histórias estão ordenadas por prioridade para o MVP.
 - O sistema rejeita arquivos de outros tipos com mensagem de erro específica.
 - O relatório é exibido na mesma página, sem redirecionamento.
 - O contador de análises é incrementado somente após o relatório ser gerado com sucesso.
+- Ao atingir 3 usos grátis sem cadastro, o visitante é direcionado ao cadastro por e-mail.
 
 ---
 
@@ -278,6 +297,7 @@ As histórias estão ordenadas por prioridade para o MVP.
 - O modal de paywall exibe o preço por análise avulsa e o método de pagamento (PIX).
 - O usuário não é redirecionado para outra página; o checkout ocorre dentro de um modal.
 - O sistema não inicia nenhuma análise antes da confirmação do pagamento.
+- Para visitantes anônimos, o bloqueio após 3 usos grátis é de cadastro, não de pagamento.
 
 ---
 
@@ -325,7 +345,7 @@ As histórias estão ordenadas por prioridade para o MVP.
 | ID | Requisito |
 |---|---|
 | ANA-01 | O endpoint `POST /api/v1/analysis` aceita `multipart/form-data` com campo `file` |
-| ANA-02 | O backend verifica `analyses_used` do usuário antes de iniciar qualquer processamento |
+| ANA-02 | O backend verifica a quota do visitante anônimo ou `analyses_used` do usuário antes de iniciar qualquer processamento |
 | ANA-03 | A extração de texto falha com erro `422` se o arquivo estiver corrompido, protegido por senha ou vazio |
 | ANA-04 | O resultado da análise é persistido com os campos: `id`, `user_id`, `score`, `report_json`, `filename`, `created_at` |
 | ANA-05 | O endpoint `GET /api/v1/analysis/{id}` retorna a análise por ID, validando que pertence ao usuário da sessão |

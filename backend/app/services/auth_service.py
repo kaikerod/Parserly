@@ -96,11 +96,15 @@ class AuthService:
         if token.version != 4:
             raise InvalidMagicLinkToken
 
-        email = await self._consume_magic_link(token)
+        email = await self._get_magic_link_email(token)
         if email is None:
             raise InvalidMagicLinkToken
 
         user = await self._get_or_create_user(email)
+        consumed_email = await self._consume_magic_link(token)
+        if consumed_email != email:
+            raise InvalidMagicLinkToken
+
         access_token = self.create_access_token(user.id)
 
         return AuthSession(
@@ -161,6 +165,14 @@ class AuthService:
 
     async def _consume_magic_link(self, token: UUID) -> str | None:
         value = await self.redis.eval(_GET_AND_DELETE_SCRIPT, 1, self._magic_link_key(token))
+        return self._decode_redis_value(value)
+
+    async def _get_magic_link_email(self, token: UUID) -> str | None:
+        value = await self.redis.get(self._magic_link_key(token))
+        return self._decode_redis_value(value)
+
+    @staticmethod
+    def _decode_redis_value(value: object) -> str | None:
         if value is None:
             return None
         if isinstance(value, bytes):

@@ -19,6 +19,7 @@ type LoginPhase = "idle" | "submitting" | "sent" | "error";
 
 interface LoginClientProps {
   initialError?: string;
+  initialNotice?: string;
 }
 
 const LOGIN_MARKERS = [
@@ -27,7 +28,7 @@ const LOGIN_MARKERS = [
   { label: "Quota", value: "3 grátis" }
 ];
 
-export function LoginClient({ initialError }: LoginClientProps) {
+export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
   const [email, setEmail] = useState("");
   const [phase, setPhase] = useState<LoginPhase>(initialError ? "error" : "idle");
   const [error, setError] = useState<string | null>(initialError ?? null);
@@ -111,8 +112,8 @@ export function LoginClient({ initialError }: LoginClientProps) {
             </h1>
 
             <p className="mt-5 max-w-2xl text-sm leading-6 text-paper/65">
-              Use o mesmo e-mail para recuperar sua sessão, manter a quota gratuita e liberar o
-              dashboard de upload.
+              Use o mesmo e-mail para recuperar sua sessão, manter sua quota e continuar suas
+              análises.
             </p>
 
             <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
@@ -182,6 +183,15 @@ export function LoginClient({ initialError }: LoginClientProps) {
                 {isSubmitting ? "Enviando link..." : "Enviar link de acesso"}
               </button>
             </form>
+
+            {initialNotice ? (
+              <div className="mt-5 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
+                <div className="flex items-start gap-3">
+                  <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
+                  <p className="leading-6 text-paper/75">{initialNotice}</p>
+                </div>
+              </div>
+            ) : null}
 
             {phase === "sent" ? (
               <div className="mt-5 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">

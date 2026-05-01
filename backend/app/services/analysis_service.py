@@ -126,12 +126,15 @@ class AnalysisService:
 
     async def analyze_resume(
         self,
-        user: User,
+        user: User | None,
         upload_file: UploadFile,
+        *,
+        guest_analyses_used: int | None = None,
     ) -> PersistedAnalysisResult:
-        await self.db_session.refresh(user)
-        if user.analyses_used >= FREE_ANALYSIS_LIMIT:
-            raise QuotaExceeded
+        if user is not None:
+            await self.db_session.refresh(user)
+            if user.analyses_used >= FREE_ANALYSIS_LIMIT:
+                raise QuotaExceeded
 
         temp_path: Path | None = None
         try:
@@ -145,6 +148,7 @@ class AnalysisService:
                 user=user,
                 filename=upload_file.filename or "resume",
                 ai_result=ai_result,
+                guest_analyses_used=guest_analyses_used,
             )
         finally:
             if temp_path is not None:
@@ -341,13 +345,14 @@ class AnalysisService:
 
     async def _persist_analysis(
         self,
-        user: User,
+        user: User | None,
         filename: str,
         ai_result: AIAnalysisResult,
+        guest_analyses_used: int | None,
     ) -> PersistedAnalysisResult:
         report_json = ai_result.report.model_dump(mode="json")
         analysis = Analysis(
-            user_id=user.id,
+            user_id=user.id if user is not None else None,
             filename=filename,
             score=ai_result.report.overall_score,
             report_json=report_json,
@@ -355,19 +360,22 @@ class AnalysisService:
         )
         self.db_session.add(analysis)
 
-        increment_result = await self.db_session.execute(
-            update(User)
-            .where(User.id == user.id, User.analyses_used < FREE_ANALYSIS_LIMIT)
-            .values(
-                analyses_used=User.analyses_used + 1,
-                updated_at=func.now(),
+        if user is None:
+            analyses_used = guest_analyses_used or 0
+        else:
+            increment_result = await self.db_session.execute(
+                update(User)
+                .where(User.id == user.id, User.analyses_used < FREE_ANALYSIS_LIMIT)
+                .values(
+                    analyses_used=User.analyses_used + 1,
+                    updated_at=func.now(),
+                )
+                .returning(User.analyses_used)
             )
-            .returning(User.analyses_used)
-        )
-        analyses_used = increment_result.scalar_one_or_none()
-        if analyses_used is None:
-            await self.db_session.rollback()
-            raise QuotaExceeded
+            analyses_used = increment_result.scalar_one_or_none()
+            if analyses_used is None:
+                await self.db_session.rollback()
+                raise QuotaExceeded
 
         try:
             await self.db_session.commit()

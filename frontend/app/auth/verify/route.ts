@@ -24,10 +24,13 @@ export async function GET(request: NextRequest) {
     });
 
     if (!backendResponse.ok) {
-      return redirectToLogin(request, "invalid-link");
+      return redirectToLogin(
+        request,
+        isInvalidMagicLinkStatus(backendResponse.status) ? "invalid-link" : "verify-unavailable"
+      );
     }
 
-    const response = NextResponse.redirect(new URL("/dashboard", request.url));
+    const response = NextResponse.redirect(createPublicUrl(request, "/dashboard"));
     const setCookie = backendResponse.headers.get("set-cookie");
 
     if (setCookie) {
@@ -42,11 +45,29 @@ export async function GET(request: NextRequest) {
 }
 
 function redirectToLogin(request: NextRequest, reason: string) {
-  const loginUrl = new URL("/login", request.url);
+  const loginUrl = createPublicUrl(request, "/login");
   loginUrl.searchParams.set("error", reason);
   return NextResponse.redirect(loginUrl);
 }
 
 function normalizedApiBaseUrl() {
   return API_BASE_URL.replace(/\/$/, "");
+}
+
+function isInvalidMagicLinkStatus(statusCode: number) {
+  return [400, 401, 404, 410, 422].includes(statusCode);
+}
+
+function createPublicUrl(request: NextRequest, pathname: string) {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost ?? request.headers.get("host");
+
+  if (!host) {
+    return new URL(pathname, request.url);
+  }
+
+  const protocol =
+    request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(/:$/, "");
+
+  return new URL(pathname, `${protocol}://${host}`);
 }

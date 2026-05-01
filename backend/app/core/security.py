@@ -29,6 +29,38 @@ async def get_current_user(
             detail="Authentication required.",
         )
 
+    return await _get_user_from_access_token(
+        access_token=access_token,
+        db_session=db_session,
+        redis_client=redis_client,
+        settings=settings,
+    )
+
+
+async def get_optional_current_user(
+    request: Request,
+    db_session: Annotated[AsyncSession, Depends(get_db_session)],
+    redis_client: Annotated[Redis, Depends(get_redis_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> User | None:
+    access_token = request.cookies.get(settings.auth_cookie_name)
+    if not access_token:
+        return None
+
+    return await _get_user_from_access_token(
+        access_token=access_token,
+        db_session=db_session,
+        redis_client=redis_client,
+        settings=settings,
+    )
+
+
+async def _get_user_from_access_token(
+    access_token: str,
+    db_session: AsyncSession,
+    redis_client: Redis,
+    settings: Settings,
+) -> User:
     auth_service = AuthService(
         db_session=db_session,
         redis_client=redis_client,
