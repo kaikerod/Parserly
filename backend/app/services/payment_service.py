@@ -270,7 +270,7 @@ class PaymentService:
             update(User)
             .where(User.id == payment_user_id)
             .values(
-                analyses_used=User.analyses_used + 1,
+                analyses_used=func.greatest(User.analyses_used - 1, 0),
                 updated_at=func.now(),
             )
         )

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,6 +72,50 @@ async def create_charge(
     )
 
 
+@router.get("/status-stream")
+async def payment_status_stream(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+    redis_client: Annotated[Redis, Depends(get_redis_client)],
+) -> StreamingResponse:
+    channel = f"analysis_unlocked:{current_user.id}"
+
+    async def event_generator():
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe(channel)
+
+        try:
+            yield _format_sse("connected", {"event": "connected"})
+
+            while not await request.is_disconnected():
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=15.0,
+                )
+
+                if message is None:
+                    yield ": keep-alive\n\n"
+                    continue
+
+                raw_data = message.get("data")
+                data = raw_data.decode("utf-8") if isinstance(raw_data, bytes) else str(raw_data)
+                event_name = _event_name_from_payload(data)
+                yield _format_sse(event_name, data)
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post("/webhook", response_model=WebhookResponse)
 async def abacatepay_webhook(
     request: Request,
@@ -92,3 +138,22 @@ async def abacatepay_webhook(
         ) from exc
 
     return WebhookResponse(received=True, status=result.status)
+
+
+def _event_name_from_payload(data: str) -> str:
+    try:
+        payload = json.loads(data)
+    except json.JSONDecodeError:
+        return "message"
+
+    if isinstance(payload, dict) and isinstance(payload.get("event"), str):
+        return payload["event"]
+
+    return "message"
+
+
+def _format_sse(event_name: str, payload: dict[str, object] | str) -> str:
+    data = json.dumps(payload) if isinstance(payload, dict) else payload
+    data_lines = data.splitlines() or [""]
+    formatted_data = "".join(f"data: {line}\n" for line in data_lines)
+    return f"event: {event_name}\n{formatted_data}\n"
