@@ -33,9 +33,13 @@ ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=10.0, pool=5.0)
 
 SYSTEM_PROMPT = """
-Voce e um especialista em sistemas ATS (Applicant Tracking Systems) e otimizacao de curriculos.
+Voce e um avaliador senior de curriculos para ATS (Applicant Tracking Systems).
+Analise apenas o texto do curriculo enviado pelo usuario e produza um diagnostico
+tecnico, pratico e conservador em portugues do Brasil.
 
-Analise o curriculo fornecido e retorne exclusivamente um objeto JSON valido com a seguinte estrutura:
+Responda exclusivamente com um objeto JSON valido, sem markdown, sem comentarios,
+sem texto antes ou depois do JSON. A resposta deve comecar com "{" e terminar
+com "}". Use exatamente estas chaves e nao adicione campos extras:
 
 {
   "overall_score": <integer 0-100>,
@@ -71,21 +75,132 @@ Analise o curriculo fornecido e retorne exclusivamente um objeto JSON valido com
   "detected_role": "<string ou null>"
 }
 
-Regras:
-- Nao inclua markdown, texto livre ou explicacoes fora do JSON.
-- O campo "overall_score" deve ser a media ponderada das categorias
-  (keywords: 35%, formatting: 20%, structure: 20%, contact_info: 10%,
-  quantifiable_achievements: 15%).
-- Ordene "recommendations" da maior para menor prioridade.
-- Limite "recommendations" a 7 itens.
-- Se o texto nao for um curriculo reconhecivel, retorne overall_score: 0 e
-  recommendations com uma unica entrada explicando o problema.
+Criterios de avaliacao:
+- keywords: aderencia a palavras-chave, ferramentas, cargos, senioridade,
+  certificacoes e termos comuns para a funcao detectada.
+- formatting: compatibilidade com parsers ATS, legibilidade, ausencia de tabelas
+  complexas, colunas confusas, imagens, icones ou elementos que prejudiquem a leitura.
+- structure: organizacao das secoes, ordem das informacoes, clareza de experiencia,
+  formacao, competencias e consistencia cronologica.
+- contact_info: presenca e clareza de email, telefone, localizacao, portfolio,
+  LinkedIn ou outros canais profissionais quando aplicavel.
+- quantifiable_achievements: uso de resultados mensuraveis, numeros, impacto,
+  escopo, tecnologias e evidencias concretas de contribuicao.
+
+Regras obrigatorias:
+- Calcule "overall_score" como media ponderada arredondada das categorias:
+  keywords 35%, formatting 20%, structure 20%, contact_info 10%,
+  quantifiable_achievements 15%.
+- Todos os scores devem ser inteiros entre 0 e 100.
+- Cada feedback deve explicar a nota daquela categoria em uma frase objetiva.
+- Ordene "recommendations" por prioridade: high, depois medium, depois low.
+- Retorne de 1 a 7 recomendacoes; nunca retorne lista vazia.
+- Cada recomendacao deve ser acionavel e especifica ao curriculo analisado.
+- "detected_role" deve ser o cargo principal inferido; use null se nao houver
+  evidencia suficiente.
+- Nao invente experiencias, cargos, empresas, formacoes, certificacoes ou metricas.
+- Nao replique dados pessoais sensiveis do curriculo no feedback.
+- Se o texto nao parecer um curriculo reconhecivel, retorne overall_score 0,
+  scores 0 em todas as categorias, detected_role null e uma unica recomendacao
+  de prioridade high explicando que o arquivo precisa conter um curriculo legivel.
 """.strip()
 
 STRICT_JSON_RETRY_SUFFIX = (
     "\n\nATENCAO: Sua resposta anterior nao era JSON valido. "
     "Retorne APENAS o objeto JSON, sem markdown, comentarios ou texto adicional."
 )
+
+ANALYSIS_RESPONSE_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["overall_score", "categories", "recommendations", "detected_role"],
+    "properties": {
+        "overall_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+        },
+        "categories": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "keywords",
+                "formatting",
+                "structure",
+                "contact_info",
+                "quantifiable_achievements",
+            ],
+            "properties": {
+                "keywords": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["score", "feedback"],
+                    "properties": {
+                        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "feedback": {"type": "string", "minLength": 1},
+                    },
+                },
+                "formatting": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["score", "feedback"],
+                    "properties": {
+                        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "feedback": {"type": "string", "minLength": 1},
+                    },
+                },
+                "structure": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["score", "feedback"],
+                    "properties": {
+                        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "feedback": {"type": "string", "minLength": 1},
+                    },
+                },
+                "contact_info": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["score", "feedback"],
+                    "properties": {
+                        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "feedback": {"type": "string", "minLength": 1},
+                    },
+                },
+                "quantifiable_achievements": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["score", "feedback"],
+                    "properties": {
+                        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "feedback": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+        },
+        "recommendations": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 7,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["priority", "action", "expected_impact"],
+                "properties": {
+                    "priority": {"type": "string", "enum": ["high", "medium", "low"]},
+                    "action": {"type": "string", "minLength": 1},
+                    "expected_impact": {"type": "string", "minLength": 1},
+                },
+            },
+        },
+        "detected_role": {
+            "anyOf": [
+                {"type": "string"},
+                {"type": "null"},
+            ],
+        },
+    },
+}
 
 
 class QuotaExceeded(Exception):
@@ -327,7 +442,14 @@ class AnalysisService:
             ],
             "temperature": 0.2,
             "max_tokens": 2048,
-            "response_format": {"type": "json_object"},
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "ats_resume_analysis",
+                    "strict": True,
+                    "schema": ANALYSIS_RESPONSE_SCHEMA,
+                },
+            },
         }
 
     @staticmethod

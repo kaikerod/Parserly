@@ -367,14 +367,21 @@ headers = {
 }
 
 payload = {
-    "model": settings.OPENROUTER_MODEL,  # ex: "google/gemini-flash-1.5"
+    "model": settings.OPENROUTER_MODEL,  # ex: "google/gemma-4-26b-a4b-it:free"
     "messages": [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": resume_text}
     ],
     "temperature": 0.2,
     "max_tokens": 2048,
-    "response_format": {"type": "json_object"}  # Forçar saída JSON
+    "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "ats_resume_analysis",
+            "strict": True,
+            "schema": ANALYSIS_RESPONSE_SCHEMA
+        }
+    }
 }
 ```
 
@@ -776,8 +783,8 @@ EMAIL_FROM=noreply@atsanalyzer.com.br
 
 # OpenRouter
 OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_MODEL=google/gemini-flash-1.5
-OPENROUTER_FALLBACK_MODEL=openai/gpt-4o-mini
+OPENROUTER_MODEL=google/gemma-4-26b-a4b-it:free
+OPENROUTER_FALLBACK_MODEL=google/gemma-4-26b-a4b-it:free
 
 # AbacatePay
 ABACATEPAY_API_KEY=...

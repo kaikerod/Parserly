@@ -5,11 +5,15 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowUpRight,
+  BookOpenText,
+  CreditCard,
   FileSearch,
   Loader2,
   LogOut,
   LockKeyhole,
   RotateCw,
+  Sparkles,
+  UsersRound,
   UserPlus
 } from "lucide-react";
 import { ApiError, logout, submitResumeForAnalysis } from "@/lib/api";
@@ -32,6 +36,37 @@ const GUEST_DASHBOARD_METRICS = [
   { label: "Após limite", value: "Cadastro", detail: "magic link por e-mail" }
 ];
 
+const NAVIGATION_DETAILS = [
+  {
+    label: "Produto",
+    title: "Análise ATS com diagnóstico acionável",
+    description:
+      "Envie um currículo em PDF ou DOCX para receber score, leitura por categoria e recomendações priorizadas antes da candidatura.",
+    icon: Sparkles
+  },
+  {
+    label: "Guias",
+    title: "Boas práticas para passar por filtros ATS",
+    description:
+      "Consulte orientações sobre palavras-chave, estrutura de seções, formatação compatível e ajustes que melhoram a leitura automática.",
+    icon: BookOpenText
+  },
+  {
+    label: "Pagamento",
+    title: "Análises extras com checkout via PIX",
+    description:
+      "Use as análises gratuitas e, ao atingir o limite, libere novas avaliações pelo fluxo de pagamento seguro integrado ao AbacatePay.",
+    icon: CreditCard
+  },
+  {
+    label: "Equipe",
+    title: "Produto guiado por carreira, dados e engenharia",
+    description:
+      "O Parserly combina critérios técnicos de parsing, experiência de candidatura e IA para transformar currículos em planos claros de melhoria.",
+    icon: UsersRound
+  }
+];
+
 interface DashboardClientProps {
   isAuthenticated: boolean;
 }
@@ -48,7 +83,9 @@ export function DashboardClient({ isAuthenticated }: DashboardClientProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [submissionMode, setSubmissionMode] = useState<SubmissionMode>("manual");
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [activeNavigationDetail, setActiveNavigationDetail] = useState(NAVIGATION_DETAILS[0]);
   const [error, setError] = useState<string | null>(null);
+  const ActiveNavigationIcon = activeNavigationDetail.icon;
 
   const runAnalysis = useCallback(async (file: File, mode: SubmissionMode = "manual") => {
     setSelectedFile(file);
@@ -121,11 +158,22 @@ export function DashboardClient({ isAuthenticated }: DashboardClientProps) {
             </div>
           </div>
 
-          <div className="hidden items-center gap-6 md:flex">
-            <span>Produto</span>
-            <span>Guias</span>
-            <span>Pagamento</span>
-            <span>Equipe</span>
+          <div className="hidden items-center gap-2 md:flex" aria-label="Navegação principal">
+            {NAVIGATION_DETAILS.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => setActiveNavigationDetail(item)}
+                className={`focus-ring rounded-md px-3 py-2 text-xs font-semibold transition ${
+                  activeNavigationDetail.label === item.label
+                    ? "bg-paper text-ink"
+                    : "text-paper/60 hover:bg-fog hover:text-paper"
+                }`}
+                aria-pressed={activeNavigationDetail.label === item.label}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
 
           {isAuthenticated ? (
@@ -152,6 +200,24 @@ export function DashboardClient({ isAuthenticated }: DashboardClientProps) {
             </a>
           )}
         </nav>
+
+        <section
+          aria-live="polite"
+          className="hidden items-start gap-4 rounded-md border border-line/70 bg-graphite/80 p-4 shadow-tool backdrop-blur md:flex"
+        >
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-night text-acid">
+            <ActiveNavigationIcon className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase text-copper">{activeNavigationDetail.label}</p>
+            <h2 className="mt-1 font-display text-xl font-semibold text-paper">
+              {activeNavigationDetail.title}
+            </h2>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-paper/62">
+              {activeNavigationDetail.description}
+            </p>
+          </div>
+        </section>
 
         <header className="grid gap-6 border-b border-line/55 pb-7 lg:grid-cols-[1fr_32rem] lg:items-end">
           <div>

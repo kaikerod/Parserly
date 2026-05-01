@@ -152,6 +152,7 @@ class PaymentService:
             raise PaymentProviderUnavailable("missing AbacatePay API key")
 
         payload = {
+            "method": "PIX",
             "data": {
                 "amount": self.settings.analysis_price_cents,
                 "description": "Analise ATS Avulsa",
