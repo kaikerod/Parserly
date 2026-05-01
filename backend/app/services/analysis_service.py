@@ -3,14 +3,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from uuid import UUID
-from zipfile import BadZipFile, ZipFile
 
 import httpx
+import pdfplumber
+from docx import Document
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 from fastapi import UploadFile
 from pydantic import ValidationError
 from sqlalchemy import func, update
@@ -31,6 +35,30 @@ MAX_AI_ATTEMPTS = 3
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=10.0, pool=5.0)
+MIN_RESUME_WORDS = 40
+MIN_ALPHA_RATIO = 0.45
+MAX_RAW_PDF_MARKERS = 3
+MIN_RAW_PDF_TECHNICAL_TOKENS = 8
+MAX_RAW_PDF_TOKEN_RATIO = 0.08
+WORD_RE = re.compile(r"[^\W\d_]{2,}(?:[-'][^\W\d_]{2,})?")
+PDF_TECHNICAL_TOKEN_RE = re.compile(
+    r"\b(?:"
+    r"obj|endobj|stream|endstream|xref|startxref|trailer|"
+    r"flatedecode|decodeparms|mediabox|procset|xobject|"
+    r"catalog|pages|metadata|font|contents|resources"
+    r")\b",
+    re.IGNORECASE,
+)
+PDF_OBJECT_MARKER_RE = re.compile(
+    r"\b\d+\s+\d+\s+obj\b|"
+    r"\bendobj\b|"
+    r"\bstream\b|"
+    r"\bendstream\b|"
+    r"\bxref\b|"
+    r"\bstartxref\b|"
+    r"/(?:Type|Catalog|Pages|Font|Contents|Resources|Length|Filter)\b",
+    re.IGNORECASE,
+)
 
 SYSTEM_PROMPT = """
 Voce e um avaliador senior de curriculos para ATS (Applicant Tracking Systems).
@@ -234,6 +262,23 @@ class PersistedAnalysisResult:
     analyses_used: int
 
 
+@dataclass(frozen=True, slots=True)
+class ExtractedResumeText:
+    text: str
+    file_type: str
+    extraction_method: str
+    pages_processed: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractedTextQuality:
+    characters: int
+    words: int
+    alpha_ratio: float
+    pdf_technical_tokens: int
+    pdf_object_markers: int
+
+
 class AnalysisService:
     def __init__(self, db_session: AsyncSession, settings: Settings) -> None:
         self.db_session = db_session
@@ -254,11 +299,16 @@ class AnalysisService:
         temp_path: Path | None = None
         try:
             temp_path = await self._write_upload_to_temp_file(upload_file)
-            resume_text = await self._extract_text(temp_path, upload_file.filename or "")
-            if len(resume_text.strip()) < MIN_RESUME_CHARS:
-                raise InvalidResumeFile("insufficient_content")
+            extracted_resume = await self._extract_text(temp_path, upload_file.filename or "")
+            quality = self._validate_extracted_text_quality(
+                extracted_resume.text,
+                file_type=extracted_resume.file_type,
+                extraction_method=extracted_resume.extraction_method,
+                pages_processed=extracted_resume.pages_processed,
+            )
+            self._log_extraction_accepted(extracted_resume, quality)
 
-            ai_result = await self._analyze_with_openrouter(resume_text)
+            ai_result = await self._analyze_with_openrouter(extracted_resume.text)
             return await self._persist_analysis(
                 user=user,
                 filename=upload_file.filename or "resume",
@@ -272,7 +322,13 @@ class AnalysisService:
     async def _write_upload_to_temp_file(self, upload_file: UploadFile) -> Path:
         filename = upload_file.filename or ""
         suffix = Path(filename).suffix.lower()
+        file_type = self._safe_file_type_from_suffix(suffix)
         if suffix not in ALLOWED_EXTENSIONS:
+            self._log_file_rejected(
+                file_type=file_type,
+                extraction_method="not_started",
+                reason="unsupported_type",
+            )
             raise InvalidResumeFile("unsupported_type")
 
         total_bytes = 0
@@ -283,74 +339,265 @@ class AnalysisService:
                 if total_bytes > MAX_UPLOAD_BYTES:
                     temp_file.close()
                     temp_path.unlink(missing_ok=True)
+                    self._log_file_rejected(
+                        file_type=file_type,
+                        extraction_method="not_started",
+                        reason="file_too_large",
+                    )
                     raise InvalidResumeFile("file_too_large")
                 temp_file.write(chunk)
 
         if total_bytes == 0:
             temp_path.unlink(missing_ok=True)
+            self._log_file_rejected(
+                file_type=file_type,
+                extraction_method="not_started",
+                reason="insufficient_content",
+            )
             raise InvalidResumeFile("insufficient_content")
 
         return temp_path
 
-    async def _extract_text(self, file_path: Path, filename: str) -> str:
+    async def _extract_text(self, file_path: Path, filename: str) -> ExtractedResumeText:
         suffix = Path(filename).suffix.lower()
+        file_type = self._safe_file_type_from_suffix(suffix)
+        extraction_method = self._extraction_method_for_suffix(suffix)
         try:
             if suffix == ".pdf":
-                return await asyncio.to_thread(self._extract_pdf_text_placeholder, file_path)
+                text, pages_processed = await asyncio.to_thread(
+                    self._extract_pdf_text,
+                    file_path,
+                )
+                return ExtractedResumeText(
+                    text=text,
+                    file_type=file_type,
+                    extraction_method=extraction_method,
+                    pages_processed=pages_processed,
+                )
             if suffix == ".docx":
-                return await asyncio.to_thread(self._extract_docx_text_placeholder, file_path)
-        except InvalidResumeFile:
+                return ExtractedResumeText(
+                    text=await asyncio.to_thread(self._extract_docx_text, file_path),
+                    file_type=file_type,
+                    extraction_method=extraction_method,
+                    pages_processed=None,
+                )
+        except InvalidResumeFile as exc:
+            self._log_file_rejected(
+                file_type=file_type,
+                extraction_method=extraction_method,
+                reason=exc.reason,
+            )
             raise
         except Exception as exc:
+            self._log_file_rejected(
+                file_type=file_type,
+                extraction_method=extraction_method,
+                reason="corrupted",
+            )
             raise InvalidResumeFile("corrupted") from exc
 
+        self._log_file_rejected(
+            file_type=file_type,
+            extraction_method=extraction_method,
+            reason="unsupported_type",
+        )
         raise InvalidResumeFile("unsupported_type")
 
-    def _extract_pdf_text_placeholder(self, file_path: Path) -> str:
-        data = file_path.read_bytes()
-        if not data.startswith(b"%PDF-"):
+    def _extract_pdf_text(self, file_path: Path) -> tuple[str, int]:
+        with file_path.open("rb") as file:
+            header = file.read(5)
+        if header != b"%PDF-":
             raise InvalidResumeFile("corrupted")
 
-        # Placeholder for pdfplumber extraction. This best-effort fallback keeps
-        # the service flow testable until the real extractor is installed.
-        decoded = data.decode("latin-1", errors="ignore")
-        return self._normalize_extracted_text(decoded)
+        page_texts: list[str] = []
+        with pdfplumber.open(file_path) as pdf:
+            pages_processed = len(pdf.pages)
+            for page in pdf.pages:
+                page_text = page.extract_text() or ""
+                if page_text.strip():
+                    page_texts.append(page_text)
 
-    def _extract_docx_text_placeholder(self, file_path: Path) -> str:
-        # Placeholder for python-docx extraction using the DOCX zip/xml structure.
-        try:
-            with ZipFile(file_path) as archive:
-                document_xml = archive.read("word/document.xml").decode("utf-8", errors="ignore")
-        except KeyError as exc:
-            raise InvalidResumeFile("corrupted") from exc
-        except BadZipFile as exc:
-            raise InvalidResumeFile("corrupted") from exc
+        return self._normalize_extracted_text("\n\n".join(page_texts)), pages_processed
 
-        text = (
-            document_xml.replace("</w:t>", " ")
-            .replace("</w:p>", "\n")
-            .replace("<w:tab/>", " ")
-        )
-        return self._normalize_extracted_text(text)
+    def _extract_docx_text(self, file_path: Path) -> str:
+        document = Document(file_path)
+        blocks: list[str] = []
+
+        for child in document.element.body.iterchildren():
+            if child.tag.endswith("}p"):
+                paragraph_text = Paragraph(child, document).text
+                if paragraph_text.strip():
+                    blocks.append(paragraph_text)
+            elif child.tag.endswith("}tbl"):
+                table_text = self._extract_docx_table_text(Table(child, document))
+                if table_text.strip():
+                    blocks.append(table_text)
+
+        return self._normalize_extracted_text("\n\n".join(blocks))
+
+    def _extract_docx_table_text(self, table: Table) -> str:
+        rows: list[str] = []
+        for row in table.rows:
+            cells: list[str] = []
+            for cell in row.cells:
+                cell_text = self._normalize_extracted_text(
+                    "\n".join(paragraph.text for paragraph in cell.paragraphs)
+                )
+                if cell_text:
+                    cells.append(" / ".join(cell_text.splitlines()))
+            if cells:
+                rows.append(" | ".join(cells))
+        return "\n".join(rows)
 
     @staticmethod
     def _normalize_extracted_text(raw_text: str) -> str:
-        chars = []
-        inside_tag = False
-        for char in raw_text:
-            if char == "<":
-                inside_tag = True
-                chars.append(" ")
+        text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+        lines: list[str] = []
+        previous_blank = True
+
+        for raw_line in text.split("\n"):
+            printable_line = "".join(
+                char if char.isprintable() or char == "\t" else " " for char in raw_line
+            )
+            line = " ".join(printable_line.split())
+            if line:
+                lines.append(line)
+                previous_blank = False
                 continue
-            if char == ">":
-                inside_tag = False
-                chars.append(" ")
-                continue
-            if inside_tag:
-                continue
-            if char.isprintable() or char in ("\n", "\t"):
-                chars.append(char)
-        return " ".join("".join(chars).split())
+            if not previous_blank and lines:
+                lines.append("")
+                previous_blank = True
+
+        while lines and lines[-1] == "":
+            lines.pop()
+
+        return "\n".join(lines)
+
+    def _validate_extracted_text_quality(
+        self,
+        resume_text: str,
+        *,
+        file_type: str,
+        extraction_method: str,
+        pages_processed: int | None,
+    ) -> ExtractedTextQuality:
+        quality = self._measure_extracted_text_quality(resume_text)
+        rejection_reason = self._extracted_text_rejection_reason(quality)
+
+        if rejection_reason is not None:
+            self._log_text_rejected(
+                file_type=file_type,
+                extraction_method=extraction_method,
+                pages_processed=pages_processed,
+                quality=quality,
+                reason=rejection_reason,
+            )
+            raise InvalidResumeFile(rejection_reason)
+
+        return quality
+
+    @staticmethod
+    def _extracted_text_rejection_reason(quality: ExtractedTextQuality) -> str | None:
+        if quality.characters < MIN_RESUME_CHARS or quality.words < MIN_RESUME_WORDS:
+            return "insufficient_content"
+
+        if quality.alpha_ratio < MIN_ALPHA_RATIO:
+            return "unreadable_content"
+
+        has_raw_pdf_markers = quality.pdf_object_markers >= MAX_RAW_PDF_MARKERS
+        raw_pdf_token_ratio = quality.pdf_technical_tokens / max(quality.words, 1)
+        has_raw_pdf_tokens = (
+            quality.pdf_technical_tokens >= MIN_RAW_PDF_TECHNICAL_TOKENS
+            and raw_pdf_token_ratio >= MAX_RAW_PDF_TOKEN_RATIO
+        )
+        if has_raw_pdf_markers or has_raw_pdf_tokens:
+            return "raw_pdf_content"
+
+        return None
+
+    @staticmethod
+    def _measure_extracted_text_quality(resume_text: str) -> ExtractedTextQuality:
+        stripped_text = resume_text.strip()
+        non_space_chars = [char for char in stripped_text if not char.isspace()]
+        alpha_chars = sum(1 for char in non_space_chars if char.isalpha())
+        alpha_ratio = alpha_chars / max(len(non_space_chars), 1)
+
+        words = WORD_RE.findall(stripped_text)
+        pdf_technical_tokens = PDF_TECHNICAL_TOKEN_RE.findall(stripped_text)
+        pdf_object_markers = PDF_OBJECT_MARKER_RE.findall(stripped_text)
+
+        return ExtractedTextQuality(
+            characters=len(stripped_text),
+            words=len(words),
+            alpha_ratio=alpha_ratio,
+            pdf_technical_tokens=len(pdf_technical_tokens),
+            pdf_object_markers=len(pdf_object_markers),
+        )
+
+    @staticmethod
+    def _safe_file_type_from_suffix(suffix: str) -> str:
+        if suffix in ALLOWED_EXTENSIONS:
+            return suffix
+        if not suffix:
+            return "missing_extension"
+        return "unsupported_extension"
+
+    @staticmethod
+    def _extraction_method_for_suffix(suffix: str) -> str:
+        if suffix == ".pdf":
+            return "pdfplumber"
+        if suffix == ".docx":
+            return "python-docx"
+        return "unsupported"
+
+    @staticmethod
+    def _log_extraction_accepted(
+        extracted_resume: ExtractedResumeText,
+        quality: ExtractedTextQuality,
+    ) -> None:
+        logger.info(
+            "Resume extraction accepted: file_type=%s extraction_method=%s "
+            "characters=%s words=%s pages_processed=%s",
+            extracted_resume.file_type,
+            extracted_resume.extraction_method,
+            quality.characters,
+            quality.words,
+            extracted_resume.pages_processed,
+        )
+
+    @staticmethod
+    def _log_text_rejected(
+        *,
+        file_type: str,
+        extraction_method: str,
+        pages_processed: int | None,
+        quality: ExtractedTextQuality,
+        reason: str,
+    ) -> None:
+        logger.warning(
+            "Resume extraction rejected: file_type=%s extraction_method=%s "
+            "characters=%s words=%s pages_processed=%s reason=%s",
+            file_type,
+            extraction_method,
+            quality.characters,
+            quality.words,
+            pages_processed,
+            reason,
+        )
+
+    @staticmethod
+    def _log_file_rejected(
+        *,
+        file_type: str,
+        extraction_method: str,
+        reason: str,
+    ) -> None:
+        logger.warning(
+            "Resume file rejected: file_type=%s extraction_method=%s reason=%s",
+            file_type,
+            extraction_method,
+            reason,
+        )
 
     async def _analyze_with_openrouter(self, resume_text: str) -> AIAnalysisResult:
         if not self.settings.openrouter_api_key:
@@ -446,23 +693,21 @@ class AnalysisService:
         try:
             payload = response.json()
         except json.JSONDecodeError:
-            return response.text[:300]
+            return "non_json_error_response"
 
         if not isinstance(payload, dict):
-            return str(payload)[:300]
+            return "unexpected_error_response"
 
         error = payload.get("error")
         if not isinstance(error, dict):
-            return str(payload)[:300]
+            return "missing_error_object"
 
         code = error.get("code", response.status_code)
         message = error.get("message", "unknown")
         metadata = error.get("metadata")
         provider_name = metadata.get("provider_name") if isinstance(metadata, dict) else None
-        raw_provider_message = metadata.get("raw") if isinstance(metadata, dict) else None
         provider = f" provider={provider_name}" if provider_name else ""
-        raw = f" raw={str(raw_provider_message)[:240]}" if raw_provider_message else ""
-        return f"code={code}{provider} message={str(message)[:240]}{raw}"
+        return f"code={code}{provider} message={str(message)[:240]}"
 
     def _openrouter_headers(self) -> dict[str, str]:
         return {
