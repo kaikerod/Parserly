@@ -15,6 +15,8 @@ ENV NODE_ENV=development
 
 COPY package.json package-lock.json ./
 RUN npm ci
+COPY . .
+RUN mkdir -p .next
 
 EXPOSE 3000
 
@@ -23,6 +25,8 @@ CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
 FROM base AS builder
 
 ENV NODE_ENV=production
+ARG API_BASE_URL=http://localhost:8000
+ENV API_BASE_URL=${API_BASE_URL}
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

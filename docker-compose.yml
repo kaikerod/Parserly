@@ -3,11 +3,11 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-parserly}
+      POSTGRES_USER: ${POSTGRES_USER:-parserly}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parserly}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -43,35 +43,33 @@ services:
       redis:
         condition: service_healthy
     environment:
-      APP_URL: ${APP_URL}
-      SECRET_KEY: ${SECRET_KEY}
-      ENVIRONMENT: ${ENVIRONMENT}
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      SECRET_KEY: ${SECRET_KEY:-change-me-only-for-local-development}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-parserly}:${POSTGRES_PASSWORD:-parserly}@db:5432/${POSTGRES_DB:-parserly}
       REDIS_URL: redis://redis:6379/0
-      RESEND_API_KEY: ${RESEND_API_KEY}
-      EMAIL_FROM: ${EMAIL_FROM}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL}
-      OPENROUTER_FALLBACK_MODEL: ${OPENROUTER_FALLBACK_MODEL}
-      ABACATEPAY_API_KEY: ${ABACATEPAY_API_KEY}
-      ABACATEPAY_API_URL: ${ABACATEPAY_API_URL}
-      ABACATEPAY_WEBHOOK_SECRET: ${ABACATEPAY_WEBHOOK_SECRET}
-      ANALYSIS_PRICE_CENTS: ${ANALYSIS_PRICE_CENTS}
-      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE}
-      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE}
-      UPLOAD_TMP_DIR: ${UPLOAD_TMP_DIR}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@localhost}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-flash-1.5}
+      OPENROUTER_FALLBACK_MODEL: ${OPENROUTER_FALLBACK_MODEL:-openai/gpt-4o-mini}
+      ABACATEPAY_API_KEY: ${ABACATEPAY_API_KEY:-}
+      ABACATEPAY_API_URL: ${ABACATEPAY_API_URL:-https://api.abacatepay.com/v2}
+      ABACATEPAY_WEBHOOK_SECRET: ${ABACATEPAY_WEBHOOK_SECRET:-}
+      ANALYSIS_PRICE_CENTS: ${ANALYSIS_PRICE_CENTS:-1990}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-access_token}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-strict}
+      UPLOAD_TMP_DIR: ${UPLOAD_TMP_DIR:-/tmp/parserly_uploads}
     ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+      - "${API_PORT:-8000}:8000"
 
   web:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: development
+      args:
+        API_BASE_URL: ${API_BASE_URL:-http://api:8000}
     restart: unless-stopped
     depends_on:
       db:
@@ -81,19 +79,11 @@ services:
       api:
         condition: service_started
     environment:
-      API_BASE_URL: ${API_BASE_URL}
-      NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED}
-      WATCHPACK_POLLING: ${WATCHPACK_POLLING}
+      API_BASE_URL: ${API_BASE_URL:-http://api:8000}
+      NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED:-1}
     ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - web_node_modules:/app/node_modules
-      - web_next:/app/.next
-    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+      - "${WEB_PORT:-3000}:3000"
 
 volumes:
   postgres_data:
   redis_data:
-  web_node_modules:
-  web_next:

@@ -1,0 +1,28 @@
+services:
+  api:
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+    volumes:
+      - ./backend:/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  web:
+    build:
+      target: development
+    environment:
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING:-true}
+    volumes:
+      - ./frontend:/app
+      - web_node_modules:/app/node_modules
+      - web_next:/app/.next
+    command:
+      [
+        "sh",
+        "-c",
+        "if [ ! -d node_modules/next ]; then npm ci; fi && npm run dev -- --hostname 0.0.0.0 --port 3000",
+      ]
+
+volumes:
+  web_node_modules:
+  web_next:
