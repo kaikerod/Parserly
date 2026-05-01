@@ -1,0 +1,33 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="56" x2="440" y2="454" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#171716" />
+      <stop offset="1" stop-color="#0d0d0d" />
+    </linearGradient>
+    <linearGradient id="mark" x1="150" y1="126" x2="370" y2="374" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6d5dfc" />
+      <stop offset="0.58" stop-color="#8a7bff" />
+      <stop offset="1" stop-color="#45ff73" />
+    </linearGradient>
+    <filter id="shadow" x="112" y="96" width="288" height="320" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <g opacity="0.07">
+    <path d="M108 146H404" stroke="#f4f1ea" stroke-width="2" />
+    <path d="M108 256H404" stroke="#f4f1ea" stroke-width="2" />
+    <path d="M108 366H404" stroke="#f4f1ea" stroke-width="2" />
+    <path d="M146 108V404" stroke="#f4f1ea" stroke-width="2" />
+    <path d="M256 108V404" stroke="#f4f1ea" stroke-width="2" />
+    <path d="M366 108V404" stroke="#f4f1ea" stroke-width="2" />
+  </g>
+  <g filter="url(#shadow)">
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M150 124H220V388H150V124ZM220 124H300C359.1 124 406 170.1 406 228C406 286.2 359.1 332 300 332H220V124ZM270 170H302C332.7 170 356 193.2 356 228C356 262.9 332.7 286 302 286H270V170Z"
+      fill="url(#mark)"
+    />
+  </g>
+</svg>

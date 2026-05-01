@@ -3,7 +3,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Parserly Dashboard",
-  description: "Análise ATS de currículos com upload, relatório e checkout PIX."
+  description: "Análise ATS de currículos com upload, relatório e checkout PIX.",
+  icons: {
+    icon: "/icon.svg"
+  }
 };
 
 export default function RootLayout({
