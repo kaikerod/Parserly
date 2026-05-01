@@ -3,9 +3,9 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ats_db
-      POSTGRES_USER: parserly
-      POSTGRES_PASSWORD: parserly
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -43,22 +43,24 @@ services:
       redis:
         condition: service_healthy
     environment:
-      APP_URL: http://localhost:3000
-      SECRET_KEY: ${SECRET_KEY:-local-development-secret-change-me-64-chars-minimum-value-000}
-      ENVIRONMENT: development
-      DATABASE_URL: postgresql+asyncpg://parserly:parserly@db:5432/ats_db
+      APP_URL: ${APP_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      ENVIRONMENT: ${ENVIRONMENT}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EMAIL_FROM: ${EMAIL_FROM:-noreply@localhost}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-flash-1.5}
-      OPENROUTER_FALLBACK_MODEL: ${OPENROUTER_FALLBACK_MODEL:-openai/gpt-4o-mini}
-      ABACATEPAY_API_KEY: ${ABACATEPAY_API_KEY:-}
-      ABACATEPAY_WEBHOOK_SECRET: ${ABACATEPAY_WEBHOOK_SECRET:-}
-      ANALYSIS_PRICE_CENTS: ${ANALYSIS_PRICE_CENTS:-1990}
-      AUTH_COOKIE_SECURE: "false"
-      AUTH_COOKIE_SAMESITE: lax
-      UPLOAD_TMP_DIR: /tmp/parserly_uploads
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL}
+      OPENROUTER_FALLBACK_MODEL: ${OPENROUTER_FALLBACK_MODEL}
+      ABACATEPAY_API_KEY: ${ABACATEPAY_API_KEY}
+      ABACATEPAY_API_URL: ${ABACATEPAY_API_URL}
+      ABACATEPAY_WEBHOOK_SECRET: ${ABACATEPAY_WEBHOOK_SECRET}
+      ANALYSIS_PRICE_CENTS: ${ANALYSIS_PRICE_CENTS}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE}
+      UPLOAD_TMP_DIR: ${UPLOAD_TMP_DIR}
     ports:
       - "8000:8000"
     volumes:
@@ -79,9 +81,9 @@ services:
       api:
         condition: service_started
     environment:
-      API_BASE_URL: http://api:8000
-      NEXT_TELEMETRY_DISABLED: "1"
-      WATCHPACK_POLLING: "true"
+      API_BASE_URL: ${API_BASE_URL}
+      NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED}
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING}
     ports:
       - "3000:3000"
     volumes:

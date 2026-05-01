@@ -1,12 +1,15 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+REPO_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=REPO_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -26,6 +29,10 @@ class Settings(BaseSettings):
     abacatepay_api_url: str = "https://api.abacatepay.com/v2"
     abacatepay_webhook_secret: str = ""
     analysis_price_cents: int = 1990
+
+    resend_api_key: str = ""
+    email_from: str = "noreply@localhost"
+    upload_tmp_dir: str = ""
 
     auth_cookie_name: str = "access_token"
     auth_cookie_secure: bool = True
