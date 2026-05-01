@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 DEFAULT_OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free"
+DEFAULT_OPENROUTER_FALLBACK_MODEL = "google/gemma-4-26b-a4b-it"
 
 
 class Settings(BaseSettings):
@@ -24,7 +25,7 @@ class Settings(BaseSettings):
 
     openrouter_api_key: str = ""
     openrouter_model: str = DEFAULT_OPENROUTER_MODEL
-    openrouter_fallback_model: str = DEFAULT_OPENROUTER_MODEL
+    openrouter_fallback_model: str = DEFAULT_OPENROUTER_FALLBACK_MODEL
 
     abacatepay_api_key: str = ""
     abacatepay_api_url: str = "https://api.abacatepay.com/v2"

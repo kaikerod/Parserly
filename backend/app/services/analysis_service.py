@@ -354,6 +354,7 @@ class AnalysisService:
 
     async def _analyze_with_openrouter(self, resume_text: str) -> AIAnalysisResult:
         if not self.settings.openrouter_api_key:
+            logger.error("OpenRouter API key is not configured")
             raise AIAnalysisUnavailable
 
         try:
@@ -399,9 +400,14 @@ class AnalysisService:
                 ) as exc:
                     strict_prompt = True
                     last_error = exc
-                    logger.error("Invalid OpenRouter JSON response on attempt %s", attempt)
+                    logger.error(
+                        "Invalid OpenRouter JSON response on attempt %s using model %s",
+                        attempt,
+                        model,
+                    )
                 except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
                     last_error = exc
+                    self._log_openrouter_request_error(exc, attempt, model)
                     if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
                         if exc.response.status_code not in RETRY_STATUS_CODES:
                             break
@@ -415,6 +421,48 @@ class AnalysisService:
         if attempt == 1:
             return self.settings.openrouter_model
         return self.settings.openrouter_fallback_model or self.settings.openrouter_model
+
+    @staticmethod
+    def _log_openrouter_request_error(exc: Exception, attempt: int, model: str) -> None:
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+            logger.warning(
+                "OpenRouter request failed on attempt %s using model %s: status=%s error=%s",
+                attempt,
+                model,
+                exc.response.status_code,
+                AnalysisService._openrouter_error_summary(exc.response),
+            )
+            return
+
+        logger.warning(
+            "OpenRouter request failed on attempt %s using model %s: %s",
+            attempt,
+            model,
+            exc.__class__.__name__,
+        )
+
+    @staticmethod
+    def _openrouter_error_summary(response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            return response.text[:300]
+
+        if not isinstance(payload, dict):
+            return str(payload)[:300]
+
+        error = payload.get("error")
+        if not isinstance(error, dict):
+            return str(payload)[:300]
+
+        code = error.get("code", response.status_code)
+        message = error.get("message", "unknown")
+        metadata = error.get("metadata")
+        provider_name = metadata.get("provider_name") if isinstance(metadata, dict) else None
+        raw_provider_message = metadata.get("raw") if isinstance(metadata, dict) else None
+        provider = f" provider={provider_name}" if provider_name else ""
+        raw = f" raw={str(raw_provider_message)[:240]}" if raw_provider_message else ""
+        return f"code={code}{provider} message={str(message)[:240]}{raw}"
 
     def _openrouter_headers(self) -> dict[str, str]:
         return {
