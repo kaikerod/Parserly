@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     openrouter_model: str = "google/gemini-flash-1.5"
     openrouter_fallback_model: str = "openai/gpt-4o-mini"
 
+    abacatepay_api_key: str = ""
+    abacatepay_api_url: str = "https://api.abacatepay.com/v2"
+    abacatepay_webhook_secret: str = ""
+    analysis_price_cents: int = 1990
+
     auth_cookie_name: str = "access_token"
     auth_cookie_secure: bool = True
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "strict"
