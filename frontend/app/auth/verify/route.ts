@@ -4,6 +4,10 @@ const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:8000";
 
 export const dynamic = "force-dynamic";
 
+interface VerifyMagicLinkPayload {
+  requires_payment?: boolean;
+}
+
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
 
@@ -15,10 +19,12 @@ export async function GET(request: NextRequest) {
   verifyUrl.searchParams.set("token", token);
 
   try {
+    const cookieHeader = request.headers.get("cookie");
     const backendResponse = await fetch(verifyUrl, {
       method: "GET",
       headers: {
-        Accept: "application/json"
+        Accept: "application/json",
+        ...(cookieHeader ? { Cookie: cookieHeader } : {})
       },
       cache: "no-store"
     });
@@ -30,7 +36,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = NextResponse.redirect(createPublicUrl(request, "/dashboard"));
+    const payload = await readVerifyPayload(backendResponse);
+    const dashboardPath = payload?.requires_payment
+      ? "/dashboard?payment=required"
+      : "/dashboard";
+    const response = NextResponse.redirect(createPublicUrl(request, dashboardPath));
     const setCookie = backendResponse.headers.get("set-cookie");
 
     if (setCookie) {
@@ -41,6 +51,15 @@ export async function GET(request: NextRequest) {
     return response;
   } catch {
     return redirectToLogin(request, "verify-unavailable");
+  }
+}
+
+async function readVerifyPayload(response: Response): Promise<VerifyMagicLinkPayload | null> {
+  try {
+    const payload = (await response.json()) as VerifyMagicLinkPayload;
+    return payload && typeof payload === "object" ? payload : null;
+  } catch {
+    return null;
   }
 }
 

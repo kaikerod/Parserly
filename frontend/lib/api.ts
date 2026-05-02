@@ -1,4 +1,4 @@
-import type { AnalysisResponse } from "@/types/analysis";
+import type { AnalysisQuotaResponse, AnalysisResponse } from "@/types/analysis";
 import type { RequestMagicLinkResponse, LogoutResponse } from "@/types/auth";
 import type { CreateChargeResponse } from "@/types/payment";
 
@@ -65,6 +65,21 @@ export async function submitResumeForAnalysis(file: File): Promise<AnalysisRespo
   return parseJsonResponse<AnalysisResponse>(
     response,
     "Não foi possível concluir a análise."
+  );
+}
+
+export async function getAnalysisQuota(): Promise<AnalysisQuotaResponse> {
+  const response = await fetch(apiPath("/analysis/quota"), {
+    method: "GET",
+    headers: {
+      Accept: "application/json"
+    },
+    credentials: "include"
+  });
+
+  return parseJsonResponse<AnalysisQuotaResponse>(
+    response,
+    "Nao foi possivel verificar sua quota de analises."
   );
 }
 

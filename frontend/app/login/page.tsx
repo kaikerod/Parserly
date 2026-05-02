@@ -28,7 +28,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
     : searchParams?.reason;
   const initialNotice =
     reasonCode === "free-limit"
-      ? "Você usou as 3 análises grátis. Cadastre seu e-mail para continuar."
+      ? "Você usou as 3 análises grátis. Cadastre seu e-mail para acessar o pagamento via PIX."
       : undefined;
 
   return (

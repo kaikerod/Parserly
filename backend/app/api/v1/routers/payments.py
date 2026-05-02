@@ -69,6 +69,7 @@ async def create_charge(
         expires_at=charge.expires_at,
         expires_in=charge.expires_in,
         amount_cents=charge.amount_cents,
+        analysis_credits=charge.analysis_credits,
     )
 
 

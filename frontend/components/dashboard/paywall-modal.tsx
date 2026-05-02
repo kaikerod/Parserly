@@ -36,8 +36,10 @@ export function PaywallModal({
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [qrCodeSrc, setQrCodeSrc] = useState<string | null>(null);
   const confirmedRef = useRef(false);
+  const hasPendingAnalysis = Boolean(fileName);
 
-  const amount = charge ? formatCurrency(charge.amount_cents) : "R$ 9,90";
+  const amount = charge ? formatCurrency(charge.amount_cents) : "R$ 19,90";
+  const analysisCredits = charge?.analysis_credits ?? 10;
 
   useEffect(() => {
     if (!open) {
@@ -210,13 +212,13 @@ export function PaywallModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="paywall-title"
-        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-md border border-line bg-graphite text-paper shadow-paper"
+        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-md border border-line bg-graphite text-paper shadow-acid"
       >
         <div className="flex items-start justify-between gap-4 border-b border-line/70 px-5 py-4 sm:px-6">
           <div>
             <p className="text-xs font-semibold uppercase text-copper">Limite gratuito atingido</p>
             <h2 id="paywall-title" className="mt-1 font-display text-2xl font-semibold">
-              Pague via PIX para continuar a análise
+              Pague via PIX para liberar {analysisCredits} análises
             </h2>
           </div>
           <button
@@ -241,8 +243,9 @@ export function PaywallModal({
                     Você atingiu o limite de 3 análises gratuitas.
                   </p>
                   <p className="mt-2 text-sm leading-6 text-paper/60">
-                    A análise de {fileName ?? "currículo selecionado"} será iniciada
-                    automaticamente após a confirmação do pagamento.
+                    {hasPendingAnalysis
+                      ? `A análise de ${fileName} será iniciada automaticamente após a confirmação do pagamento, e o pacote libera mais ${analysisCredits - 1} análises.`
+                      : `Pague via PIX para liberar ${analysisCredits} análises. Depois da confirmação, envie o currículo para iniciar.`}
                   </p>
                 </div>
               </div>
@@ -250,8 +253,9 @@ export function PaywallModal({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-md border border-line/70 bg-night p-4">
-                <p className="text-xs font-semibold uppercase text-paper/45">Valor avulso</p>
+                <p className="text-xs font-semibold uppercase text-paper/45">Pacote</p>
                 <p className="mt-2 font-display text-3xl font-semibold text-copper">{amount}</p>
+                <p className="mt-1 text-xs text-paper/55">{analysisCredits} análises</p>
               </div>
               <div className="rounded-md border border-line/70 bg-night p-4">
                 <p className="text-xs font-semibold uppercase text-paper/45">Método</p>
@@ -269,7 +273,7 @@ export function PaywallModal({
                 className="focus-ring inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md bg-acid px-5 py-3 text-sm font-bold text-ink shadow-acid transition hover:-translate-y-0.5 hover:bg-mint"
               >
                 <CreditCard className="h-5 w-5" aria-hidden="true" />
-                Pagar e analisar
+                {hasPendingAnalysis ? "Pagar e analisar" : "Pagar com PIX"}
               </button>
             ) : null}
 
@@ -283,7 +287,9 @@ export function PaywallModal({
             {phase === "confirmed" ? (
               <div className="flex items-center gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm font-semibold text-paper">
                 <ShieldCheck className="h-5 w-5 text-acid" aria-hidden="true" />
-                Pagamento confirmado. Iniciando análise automaticamente.
+                {hasPendingAnalysis
+                  ? `Pagamento confirmado. Iniciando análise automaticamente. Você ainda terá ${analysisCredits - 1} análises.`
+                  : `Pagamento confirmado. ${analysisCredits} análises liberadas.`}
               </div>
             ) : null}
 
@@ -362,7 +368,8 @@ export function PaywallModal({
                 <QrCode className="h-14 w-14 text-paper/30" aria-hidden="true" />
                 <p className="mt-4 text-sm font-semibold text-paper">Checkout dentro do modal</p>
                 <p className="mt-2 text-sm leading-6 text-paper/60">
-                  Clique em Pagar e analisar para gerar o QR Code PIX.
+                  Clique em {hasPendingAnalysis ? "Pagar e analisar" : "Pagar com PIX"} para gerar
+                  o QR Code PIX.
                 </p>
               </div>
             )}

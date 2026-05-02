@@ -34,3 +34,10 @@ export interface AnalysisResponse {
   created_at: string;
   analyses_used: number;
 }
+
+export interface AnalysisQuotaResponse {
+  authenticated: boolean;
+  remaining_analyses: number;
+  payment_required: boolean;
+  registration_required: boolean;
+}

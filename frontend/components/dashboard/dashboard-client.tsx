@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
-  ArrowUpRight,
   BookOpenText,
   CreditCard,
   FileSearch,
@@ -16,7 +15,7 @@ import {
   UsersRound,
   UserPlus
 } from "lucide-react";
-import { ApiError, logout, submitResumeForAnalysis } from "@/lib/api";
+import { ApiError, getAnalysisQuota, logout, submitResumeForAnalysis } from "@/lib/api";
 import type { AnalysisResponse } from "@/types/analysis";
 import { AnalysisReport } from "./analysis-report";
 import { Dropzone } from "./dropzone";
@@ -69,9 +68,10 @@ const NAVIGATION_DETAILS = [
 
 interface DashboardClientProps {
   isAuthenticated: boolean;
+  paymentRequired?: boolean;
 }
 
-export function DashboardClient({ isAuthenticated }: DashboardClientProps) {
+export function DashboardClient({ isAuthenticated, paymentRequired = false }: DashboardClientProps) {
   const router = useRouter();
   const dashboardMetrics = isAuthenticated
     ? AUTHENTICATED_DASHBOARD_METRICS
@@ -83,18 +83,43 @@ export function DashboardClient({ isAuthenticated }: DashboardClientProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [submissionMode, setSubmissionMode] = useState<SubmissionMode>("manual");
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [autoOpenedPayment, setAutoOpenedPayment] = useState(false);
   const [activeNavigationDetail, setActiveNavigationDetail] = useState(NAVIGATION_DETAILS[0]);
   const [error, setError] = useState<string | null>(null);
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
   const ActiveNavigationIcon = activeNavigationDetail.icon;
+
+  useEffect(() => {
+    if (!isAuthenticated || !paymentRequired || autoOpenedPayment) {
+      return;
+    }
+
+    setPaywallOpen(true);
+    setError(null);
+    setAutoOpenedPayment(true);
+    window.history.replaceState(null, "", "/dashboard");
+  }, [autoOpenedPayment, isAuthenticated, paymentRequired]);
 
   const runAnalysis = useCallback(async (file: File, mode: SubmissionMode = "manual") => {
     setSelectedFile(file);
     setPendingFile(file);
     setError(null);
+    setPaymentNotice(null);
     setSubmissionMode(mode);
     setIsSubmitting(true);
 
     try {
+      const quota = await getAnalysisQuota();
+      if (quota.registration_required) {
+        router.replace("/login?reason=free-limit");
+        return;
+      }
+
+      if (quota.payment_required) {
+        setPaywallOpen(true);
+        return;
+      }
+
       const result = await submitResumeForAnalysis(file);
       setAnalysis(result);
       setPaywallOpen(false);
@@ -138,7 +163,10 @@ export function DashboardClient({ isAuthenticated }: DashboardClientProps) {
 
     if (pendingFile) {
       void runAnalysis(pendingFile, "after-payment");
+      return;
     }
+
+    setPaymentNotice("Pagamento confirmado. Você tem 10 análises liberadas.");
   }, [pendingFile, runAnalysis]);
 
   return (
@@ -230,18 +258,11 @@ export function DashboardClient({ isAuthenticated }: DashboardClientProps) {
               <br />
               Claramente <span className="accent-text">estruturado.</span>
             </h1>
-            <div className="mt-5 flex max-w-2xl flex-col gap-4 text-sm leading-6 text-paper/65 sm:flex-row sm:items-center">
+            <div className="mt-5 max-w-2xl text-sm leading-6 text-paper/65">
               <p>
                 Envie um PDF ou DOCX, receba a nota ATS e veja as correções que mais impactam sua
                 próxima candidatura.
               </p>
-              <a
-                href="#upload-panel"
-                className="focus-ring inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-md bg-acid px-4 py-2 text-sm font-bold text-ink shadow-acid transition hover:-translate-y-0.5 hover:bg-mint"
-              >
-                Iniciar
-                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-              </a>
             </div>
           </div>
 
@@ -296,6 +317,13 @@ export function DashboardClient({ isAuthenticated }: DashboardClientProps) {
               <div className="mt-5 flex items-start gap-3 rounded-md border border-coral/35 bg-coral/10 px-4 py-3 text-sm text-paper">
                 <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral" aria-hidden="true" />
                 <p>{error}</p>
+              </div>
+            ) : null}
+
+            {paymentNotice ? (
+              <div className="mt-5 flex items-start gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
+                <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
+                <p>{paymentNotice}</p>
               </div>
             ) : null}
 

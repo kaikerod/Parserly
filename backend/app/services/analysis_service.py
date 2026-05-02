@@ -21,6 +21,7 @@ from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.quotas import FREE_ANALYSIS_LIMIT
 from app.models.analysis import Analysis
 from app.models.user import User
 from app.schemas.analysis import AnalysisReport
@@ -28,7 +29,6 @@ from app.schemas.analysis import AnalysisReport
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-FREE_ANALYSIS_LIMIT = 3
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MIN_RESUME_CHARS = 100
 MAX_AI_ATTEMPTS = 3
@@ -806,5 +806,5 @@ class AnalysisService:
             report=ai_result.report,
             model_used=analysis.model_used,
             created_at=analysis.created_at,
-            analyses_used=analyses_used,
+            analyses_used=max(0, analyses_used),
         )

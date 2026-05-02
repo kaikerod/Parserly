@@ -12,6 +12,7 @@ class CreateChargeResponse(BaseModel):
     expires_at: datetime
     expires_in: int
     amount_cents: int
+    analysis_credits: int
 
 
 class WebhookResponse(BaseModel):

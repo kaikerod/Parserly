@@ -49,3 +49,10 @@ class AnalysisResponse(BaseModel):
     model_used: str
     created_at: datetime
     analyses_used: int
+
+
+class AnalysisQuotaResponse(BaseModel):
+    authenticated: bool
+    remaining_analyses: int
+    payment_required: bool
+    registration_required: bool

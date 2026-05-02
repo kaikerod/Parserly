@@ -5,6 +5,7 @@ export interface CreateChargeResponse {
   expires_at: string;
   expires_in: number;
   amount_cents: number;
+  analysis_credits: number;
 }
 
 export interface PaymentStreamEvent {

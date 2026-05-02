@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -8,11 +9,12 @@ from uuid import UUID, uuid4
 
 import jwt
 from redis.asyncio import Redis
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.quotas import FREE_ANALYSIS_LIMIT, get_guest_analyses_used
 from app.models.user import User
 
 MAGIC_LINK_TTL_SECONDS = 15 * 60
@@ -54,6 +56,7 @@ class MagicLinkRequestResult:
     email: str
     magic_link: str
     expires_in: int
+    requires_payment: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +64,13 @@ class AuthSession:
     user_id: UUID
     access_token: str
     expires_in: int
+    requires_payment: bool
+
+
+@dataclass(frozen=True, slots=True)
+class MagicLinkPayload:
+    email: str
+    requires_payment: bool = False
 
 
 class AuthService:
@@ -74,15 +84,26 @@ class AuthService:
         self.redis = redis_client
         self.settings = settings
 
-    async def request_magic_link(self, email: str) -> MagicLinkRequestResult:
+    async def request_magic_link(
+        self,
+        email: str,
+        *,
+        guest_id: str | None = None,
+    ) -> MagicLinkRequestResult:
         normalized_email = email.lower()
         await self._enforce_magic_link_rate_limit(normalized_email)
 
         token = uuid4()
         magic_link = self._build_magic_link(token)
+        requires_payment = await self._is_guest_quota_exhausted(guest_id)
         await self.redis.set(
             self._magic_link_key(token),
-            normalized_email,
+            self._encode_magic_link_payload(
+                MagicLinkPayload(
+                    email=normalized_email,
+                    requires_payment=requires_payment,
+                )
+            ),
             ex=MAGIC_LINK_TTL_SECONDS,
         )
 
@@ -90,20 +111,32 @@ class AuthService:
             email=normalized_email,
             magic_link=magic_link,
             expires_in=MAGIC_LINK_TTL_SECONDS,
+            requires_payment=requires_payment,
         )
 
-    async def verify_magic_link(self, token: UUID) -> AuthSession:
+    async def verify_magic_link(
+        self,
+        token: UUID,
+        *,
+        guest_id: str | None = None,
+    ) -> AuthSession:
         if token.version != 4:
             raise InvalidMagicLinkToken
 
-        email = await self._get_magic_link_email(token)
-        if email is None:
+        payload = await self._get_magic_link_payload(token)
+        if payload is None:
             raise InvalidMagicLinkToken
 
-        user = await self._get_or_create_user(email)
-        consumed_email = await self._consume_magic_link(token)
-        if consumed_email != email:
+        consumed_payload = await self._consume_magic_link(token)
+        if consumed_payload is None or consumed_payload.email != payload.email:
             raise InvalidMagicLinkToken
+
+        user = await self._get_or_create_user(payload.email)
+        requires_payment = payload.requires_payment or await self._is_guest_quota_exhausted(
+            guest_id
+        )
+        if requires_payment:
+            await self._mark_user_free_quota_exhausted(user)
 
         access_token = self.create_access_token(user.id)
 
@@ -111,6 +144,7 @@ class AuthService:
             user_id=user.id,
             access_token=access_token,
             expires_in=JWT_TTL_SECONDS,
+            requires_payment=requires_payment,
         )
 
     async def logout(self, access_token: str | None) -> None:
@@ -163,13 +197,13 @@ class AuthService:
         if current_count > MAGIC_LINK_RATE_LIMIT_MAX_REQUESTS:
             raise RateLimitExceeded(retry_after=max(ttl, 1))
 
-    async def _consume_magic_link(self, token: UUID) -> str | None:
+    async def _consume_magic_link(self, token: UUID) -> MagicLinkPayload | None:
         value = await self.redis.eval(_GET_AND_DELETE_SCRIPT, 1, self._magic_link_key(token))
-        return self._decode_redis_value(value)
+        return self._decode_magic_link_payload(value)
 
-    async def _get_magic_link_email(self, token: UUID) -> str | None:
+    async def _get_magic_link_payload(self, token: UUID) -> MagicLinkPayload | None:
         value = await self.redis.get(self._magic_link_key(token))
-        return self._decode_redis_value(value)
+        return self._decode_magic_link_payload(value)
 
     @staticmethod
     def _decode_redis_value(value: object) -> str | None:
@@ -204,6 +238,60 @@ class AuthService:
             select(User).where(func.lower(User.email) == email.lower())
         )
         return result.scalar_one_or_none()
+
+    async def _is_guest_quota_exhausted(self, guest_id: str | None) -> bool:
+        analyses_used = await get_guest_analyses_used(self.redis, guest_id)
+        return analyses_used >= FREE_ANALYSIS_LIMIT
+
+    async def _mark_user_free_quota_exhausted(self, user: User) -> None:
+        if user.analyses_used >= FREE_ANALYSIS_LIMIT:
+            return
+
+        await self.db_session.execute(
+            update(User)
+            .where(User.id == user.id, User.analyses_used < FREE_ANALYSIS_LIMIT)
+            .values(
+                analyses_used=FREE_ANALYSIS_LIMIT,
+                updated_at=func.now(),
+            )
+        )
+
+        try:
+            await self.db_session.commit()
+        except Exception:
+            await self.db_session.rollback()
+            raise
+
+        user.analyses_used = FREE_ANALYSIS_LIMIT
+
+    @staticmethod
+    def _encode_magic_link_payload(payload: MagicLinkPayload) -> str:
+        return json.dumps(
+            {
+                "email": payload.email,
+                "requires_payment": payload.requires_payment,
+            },
+            separators=(",", ":"),
+        )
+
+    @classmethod
+    def _decode_magic_link_payload(cls, value: object) -> MagicLinkPayload | None:
+        decoded_value = cls._decode_redis_value(value)
+        if decoded_value is None:
+            return None
+
+        try:
+            payload = json.loads(decoded_value)
+        except json.JSONDecodeError:
+            return MagicLinkPayload(email=decoded_value)
+
+        if not isinstance(payload, dict) or not isinstance(payload.get("email"), str):
+            return None
+
+        return MagicLinkPayload(
+            email=payload["email"],
+            requires_payment=bool(payload.get("requires_payment")),
+        )
 
     def _build_magic_link(self, token: UUID) -> str:
         app_url = self.settings.app_url.rstrip("/")

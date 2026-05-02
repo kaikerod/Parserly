@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from redis.asyncio import Redis
@@ -9,22 +9,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db_session
+from app.core.quotas import (
+    FREE_ANALYSIS_LIMIT,
+    GUEST_ANALYSIS_COOKIE_MAX_AGE_SECONDS,
+    GUEST_ANALYSIS_COOKIE_NAME,
+    GUEST_ANALYSIS_KEY_TTL_SECONDS,
+    get_guest_analyses_used,
+    guest_analysis_key,
+    normalize_guest_id,
+)
 from app.core.redis import get_redis_client
 from app.core.security import get_optional_current_user
 from app.models.user import User
-from app.schemas.analysis import AnalysisResponse
+from app.schemas.analysis import AnalysisQuotaResponse, AnalysisResponse
 from app.services.analysis_service import (
     AIAnalysisUnavailable,
     AnalysisService,
-    FREE_ANALYSIS_LIMIT,
     InvalidResumeFile,
     QuotaExceeded,
 )
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
-GUEST_ANALYSIS_COOKIE_NAME = "parserly_guest_id"
-GUEST_ANALYSIS_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 180
-GUEST_ANALYSIS_KEY_TTL_SECONDS = GUEST_ANALYSIS_COOKIE_MAX_AGE_SECONDS
 
 
 def get_analysis_service(
@@ -32,6 +37,32 @@ def get_analysis_service(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AnalysisService:
     return AnalysisService(db_session=db_session, settings=settings)
+
+
+@router.get("/quota", response_model=AnalysisQuotaResponse)
+async def get_analysis_quota(
+    request: Request,
+    current_user: Annotated[User | None, Depends(get_optional_current_user)],
+    redis_client: Annotated[Redis, Depends(get_redis_client)],
+) -> AnalysisQuotaResponse:
+    if current_user is None:
+        guest_id = normalize_guest_id(request.cookies.get(GUEST_ANALYSIS_COOKIE_NAME))
+        analyses_used = await get_guest_analyses_used(redis_client, guest_id)
+        remaining_analyses = max(0, FREE_ANALYSIS_LIMIT - analyses_used)
+        return AnalysisQuotaResponse(
+            authenticated=False,
+            remaining_analyses=remaining_analyses,
+            payment_required=False,
+            registration_required=remaining_analyses == 0,
+        )
+
+    remaining_analyses = max(0, FREE_ANALYSIS_LIMIT - current_user.analyses_used)
+    return AnalysisQuotaResponse(
+        authenticated=True,
+        remaining_analyses=remaining_analyses,
+        payment_required=remaining_analyses == 0,
+        registration_required=False,
+    )
 
 
 @router.post("", response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
@@ -125,14 +156,7 @@ class GuestQuotaExceeded(Exception):
 
 
 def get_or_create_guest_id(request: Request) -> str:
-    raw_guest_id = request.cookies.get(GUEST_ANALYSIS_COOKIE_NAME)
-    if raw_guest_id:
-        try:
-            return str(UUID(raw_guest_id))
-        except ValueError:
-            pass
-
-    return str(uuid4())
+    return normalize_guest_id(request.cookies.get(GUEST_ANALYSIS_COOKIE_NAME)) or str(uuid4())
 
 
 def set_guest_analysis_cookie(response: Response, guest_id: str, settings: Settings) -> None:
@@ -169,7 +193,3 @@ async def release_reserved_guest_analysis(
         return
 
     await redis_client.decr(guest_analysis_key(guest_id))
-
-
-def guest_analysis_key(guest_id: str) -> str:
-    return f"analysis:guest:{guest_id}:used"

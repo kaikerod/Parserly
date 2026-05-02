@@ -22,6 +22,7 @@ from app.models.user import User
 logger = logging.getLogger(__name__)
 
 ABACATEPAY_PIX_EXPIRATION_SECONDS = 30 * 60
+PAID_ANALYSIS_CREDITS = 10
 CREATE_CHARGE_RATE_LIMIT_SECONDS = 60 * 60
 CREATE_CHARGE_RATE_LIMIT_MAX_REQUESTS = 5
 ABACATEPAY_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=10.0, pool=5.0)
@@ -58,6 +59,7 @@ class PaymentCharge:
     expires_at: datetime
     expires_in: int
     amount_cents: int
+    analysis_credits: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,13 +157,14 @@ class PaymentService:
             "method": "PIX",
             "data": {
                 "amount": self.settings.analysis_price_cents,
-                "description": "Analise ATS Avulsa",
+                "description": f"Pacote Parserly - {PAID_ANALYSIS_CREDITS} analises ATS",
                 "expiresIn": ABACATEPAY_PIX_EXPIRATION_SECONDS,
                 "customer": {
                     "email": user.email,
                 },
                 "metadata": {
                     "user_id": str(user.id),
+                    "analysis_credits": PAID_ANALYSIS_CREDITS,
                 },
             },
         }
@@ -238,6 +241,7 @@ class PaymentService:
             expires_at=expires_at,
             expires_in=ABACATEPAY_PIX_EXPIRATION_SECONDS,
             amount_cents=self.settings.analysis_price_cents,
+            analysis_credits=PAID_ANALYSIS_CREDITS,
         )
 
     async def _process_paid_event(
@@ -271,7 +275,7 @@ class PaymentService:
             update(User)
             .where(User.id == payment_user_id)
             .values(
-                analyses_used=func.greatest(User.analyses_used - 1, 0),
+                analyses_used=User.analyses_used - PAID_ANALYSIS_CREDITS,
                 updated_at=func.now(),
             )
         )
@@ -300,7 +304,7 @@ class PaymentService:
             {
                 "event": "payment_confirmed",
                 "user_id": str(user_id),
-                "analysis_credits": 1,
+                "analysis_credits": PAID_ANALYSIS_CREDITS,
             }
         )
         try:
