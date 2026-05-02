@@ -1,0 +1,85 @@
+name: Vercel CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  backend:
+    name: Backend checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r backend/requirements-dev.txt
+
+      - name: Compile backend
+        working-directory: backend
+        run: python -m compileall app api
+
+      - name: Validate FastAPI import
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://parserly:parserly@localhost:5432/parserly
+          ENVIRONMENT: production
+          REDIS_URL: redis://localhost:6379/0
+          VERCEL: "1"
+        run: python -c "from app.main import app; print(app.title)"
+
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://parserly:parserly@localhost:5432/parserly
+          ENVIRONMENT: test
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          test_files="$(find . ../tests -path '*/node_modules/*' -prune -o -type f \( -name 'test_*.py' -o -name '*_test.py' \) -print 2>/dev/null)"
+          if [ -n "$test_files" ]; then
+            pytest
+          else
+            echo "No backend tests found yet; skipping pytest."
+          fi
