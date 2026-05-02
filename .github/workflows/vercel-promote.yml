@@ -52,12 +52,7 @@ jobs:
         env:
           API_PREVIEW_URL: ${{ inputs.api_preview_url }}
           FRONTEND_PREVIEW_URL: ${{ inputs.frontend_preview_url }}
-        run: |
-          API_PREVIEW_URL="${API_PREVIEW_URL%/}"
-          FRONTEND_PREVIEW_URL="${FRONTEND_PREVIEW_URL%/}"
-
-          curl --fail --show-error --silent --max-time 20 "$API_PREVIEW_URL/health" | python -m json.tool
-          curl --fail --show-error --silent --max-time 20 "$FRONTEND_PREVIEW_URL/" > /dev/null
+        run: node scripts/vercel-smoke.mjs
 
       - name: Run production migrations
         if: ${{ inputs.run_migrations }}

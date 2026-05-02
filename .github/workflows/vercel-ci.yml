@@ -34,6 +34,9 @@ jobs:
       - name: Typecheck and lint
         run: npm run lint
 
+      - name: Acceptance surface tests
+        run: npm run test:acceptance
+
       - name: Build
         run: npm run build
 
@@ -76,10 +79,5 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://parserly:parserly@localhost:5432/parserly
           ENVIRONMENT: test
           REDIS_URL: redis://localhost:6379/0
-        run: |
-          test_files="$(find . ../tests -path '*/node_modules/*' -prune -o -type f \( -name 'test_*.py' -o -name '*_test.py' \) -print 2>/dev/null)"
-          if [ -n "$test_files" ]; then
-            pytest
-          else
-            echo "No backend tests found yet; skipping pytest."
-          fi
+          VERCEL: "1"
+        run: pytest
