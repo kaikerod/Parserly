@@ -1,125 +1,133 @@
-# Parserly
+## 🇧🇷 Português
 
-Parserly e um analisador de curriculos focado em compatibilidade com ATS (Applicant Tracking Systems). O produto recebe arquivos PDF ou DOCX, extrai o texto no backend, envia o conteudo para um modelo de IA via OpenRouter e retorna um relatorio com nota, diagnostico por categoria e recomendacoes praticas.
+O **Parserly** é um analisador de currículos focado em compatibilidade com ATS (*Applicant Tracking Systems*). O sistema extrai texto de arquivos PDF ou DOCX, processa o conteúdo via IA e gera um diagnóstico detalhado para ajudar candidatos a superarem filtros automáticos.
 
-## Visao geral
+### ✨ Funcionalidades
 
-- Upload de curriculo em PDF ou DOCX
-- Analise ATS com pontuacao de 0 a 100
-- Quota gratuita de 3 analises por visitante/usuario
-- Identificacao por magic link por e-mail
-- Paywall com checkout via AbacatePay quando a quota e esgotada
-- Persistencia de analises e historico do usuario
+- 📁 **Upload Versátil**: Suporte para arquivos PDF e DOCX.
+- 📊 **Score ATS**: Pontuação de 0 a 100 baseada em critérios reais de recrutamento.
+- 💡 **Sugestões Práticas**: Recomendações específicas para melhorar o conteúdo e formatação.
+- 🔐 **Magic Link**: Login simplificado e seguro via e-mail.
+- 💳 **Paywall Integrado**: Integração com AbacatePay para análise de créditos extras.
+- 🕒 **Histórico**: Acesso rápido a todas as análises anteriores.
 
-## Stack
+### 🛠️ Stack Tecnológica
 
-- Backend: Python 3.12, FastAPI, SQLAlchemy async, Alembic
-- Banco: PostgreSQL 16
-- Cache e fila: Redis
-- Frontend: Next.js 14, App Router, Tailwind CSS
-- IA: OpenRouter
-- E-mail: Resend
-- Pagamento: AbacatePay
-- Infra local: Docker Compose
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
+![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
+![Next.js](https://img.shields.io/badge/next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
 
-## Estrutura
+### 🚀 Como Rodar Localmente
 
-- `backend/` - API FastAPI e regras de negocio
-- `frontend/` - interface Next.js
-- `docs/` - documentacao complementar, quando necessario
-- `tests/` - testes automatizados, quando adicionados
-- `PRD.md` - documento de requisitos e arquitetura do produto
+#### Requisitos
+- Node.js 18+
+- Python 3.12+
+- Docker & Docker Compose
 
-## Requisitos
-
-- Node.js 18+ para o frontend
-- Python 3.12+ para o backend
-- Docker e Docker Compose para subir Postgres e Redis localmente
-
-## Como rodar localmente
-
-### Opcao 1: Docker Compose
-
-1. Copie o arquivo de exemplo de ambiente e ajuste os valores:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-2. Suba a stack completa:
-
+#### Opção 1: Docker Compose (Recomendado)
 ```bash
+# 1. Configure as variáveis de ambiente
+cp .env.example .env
+
+# 2. Suba a stack completa
 docker compose up --build
 ```
+Acesse em: `http://localhost:3000`
 
-3. Acesse:
-
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:8000`
-- Health check: `http://localhost:8000/health`
-
-### Opcao 2: Rodando frontend e backend separadamente
-
-#### Frontend
-
+#### Opção 2: Desenvolvimento Separado
+**Frontend:**
 ```bash
-cd frontend
-npm install
-npm run dev
+cd frontend && npm install && npm run dev
 ```
-
-#### Backend
-
-```powershell
+**Backend:**
+```bash
 cd backend
 python -m venv .venv
+# Windows:
 .\.venv\Scripts\Activate.ps1
+# Unix:
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload
 ```
 
-## Variaveis de ambiente
+### 🔑 Variáveis de Ambiente
+As variáveis essenciais estão no arquivo `.env.example`. Não esqueça de configurar:
+- `OPENROUTER_API_KEY` (Para a IA)
+- `RESEND_API_KEY` (Para os e-mails)
+- `ABACATEPAY_API_KEY` (Para pagamentos)
 
-As variaveis principais estao em `.env.example`. As mais importantes sao:
+---
 
-- `APP_URL`
-- `SECRET_KEY`
-- `DATABASE_URL`
-- `REDIS_URL`
-- `RESEND_API_KEY`
-- `EMAIL_FROM`
-- `OPENROUTER_API_KEY`
-- `OPENROUTER_MODEL`
-- `OPENROUTER_FALLBACK_MODEL`
-- `ABACATEPAY_API_KEY`
-- `ABACATEPAY_WEBHOOK_SECRET`
-- `ANALYSIS_PRICE_CENTS`
+## 🇺🇸 English
 
-## Scripts do frontend
+**Parserly** is a resume analyzer focused on ATS (*Applicant Tracking Systems*) compatibility. The system extracts text from PDF or DOCX files, processes the content via AI, and generates a detailed diagnosis to help candidates overcome automated filters.
 
-No `frontend/package.json`:
+### ✨ Features
 
-- `npm run dev` - sobe o servidor de desenvolvimento
-- `npm run build` - gera build de producao
-- `npm run lint` - executa verificacao de tipos do TypeScript
-- `npm run start` - inicia a aplicacao com build pronto
+- 📁 **Versatile Upload**: Support for PDF and DOCX files.
+- 📊 **ATS Score**: 0 to 100 score based on real recruitment criteria.
+- 💡 **Practical Suggestions**: Specific recommendations to improve content and formatting.
+- 🔐 **Magic Link**: Simplified and secure login via email.
+- 💳 **Integrated Paywall**: Integration with AbacatePay for extra credit analysis.
+- 🕒 **History**: Quick access to all previous analyses.
 
-## Endpoints principais
+### 🛠️ Tech Stack
 
-- `POST /api/v1/auth/request-link`
-- `GET /api/v1/auth/verify`
-- `POST /api/v1/auth/logout`
-- `POST /api/v1/analysis`
-- `GET /api/v1/analysis`
-- `GET /api/v1/analysis/{id}`
-- `POST /api/v1/payments/create-charge`
-- `POST /api/v1/payments/webhook`
-- `GET /health`
+- **Backend**: Python 3.12, FastAPI, SQLAlchemy async, Alembic.
+- **Frontend**: Next.js 14 (App Router), Tailwind CSS.
+- **Database**: PostgreSQL 16 & Redis (Cache/Queue).
+- **Services**: OpenRouter (AI), Resend (Email), AbacatePay (Payments).
 
-## Documento de referencia
+### 🚀 Getting Started
 
-O escopo funcional, os fluxos e as regras de negocio detalhadas estao descritos em [`PRD.md`](./PRD.md).
+#### Requirements
+- Node.js 18+
+- Python 3.12+
+- Docker & Docker Compose
 
-## Licenca
+#### Option 1: Docker Compose (Recommended)
+```bash
+# 1. Setup environment variables
+cp .env.example .env
 
-Este repositorio usa a [Business Source License 1.1](./LICENSE).
+# 2. Spin up the stack
+docker compose up --build
+```
+Access at: `http://localhost:3000`
+
+#### Option 2: Manual Setup
+**Frontend:**
+```bash
+cd frontend && npm install && npm run dev
+```
+**Backend:**
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate # or .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+### 🔑 Environment Variables
+Key variables are listed in `.env.example`. Essential configurations:
+- `OPENROUTER_API_KEY` (For AI)
+- `RESEND_API_KEY` (For Emails)
+- `ABACATEPAY_API_KEY` (For Payments)
+
+---
+
+## 📄 Licença / License
+
+Este repositório utiliza a [Business Source License 1.1](./LICENSE).
+This repository uses the [Business Source License 1.1](./LICENSE).
+
+<div align="center">
+  <sub>Feito com ❤️ por Kaike</sub>
+</div>
+
