@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
@@ -14,7 +14,13 @@ def get_engine() -> AsyncEngine:
 
     if _engine is None:
         settings = get_settings()
-        _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        _engine = create_async_engine(
+            settings.database_url,
+            pool_pre_ping=True,
+            pool_size=1,
+            max_overflow=2,
+            pool_recycle=300,
+        )
 
     return _engine
 
@@ -34,7 +40,7 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
 
 async def init_development_database() -> None:
     settings = get_settings()
-    if settings.environment == "production":
+    if should_skip_automatic_schema_creation(settings):
         return
 
     from app.models import Base
@@ -42,6 +48,10 @@ async def init_development_database() -> None:
     async with get_engine().begin() as connection:
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
         await connection.run_sync(Base.metadata.create_all)
+
+
+def should_skip_automatic_schema_creation(settings: Settings) -> bool:
+    return settings.environment.lower() == "production" or settings.vercel
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:

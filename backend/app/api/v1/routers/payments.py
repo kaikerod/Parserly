@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from time import monotonic
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -22,6 +23,7 @@ from app.services.payment_service import (
 )
 
 router = APIRouter(prefix="/payments", tags=["payments"])
+PAYMENT_STATUS_STREAM_TIMEOUT_SECONDS = 55.0
 
 
 def get_payment_service(
@@ -87,8 +89,14 @@ async def payment_status_stream(
 
         try:
             yield _format_sse("connected", {"event": "connected"})
+            stream_started_at = monotonic()
 
             while not await request.is_disconnected():
+                elapsed_seconds = monotonic() - stream_started_at
+                if elapsed_seconds >= PAYMENT_STATUS_STREAM_TIMEOUT_SECONDS:
+                    yield _format_sse("timeout", {"event": "reconnect"})
+                    break
+
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True,
                     timeout=15.0,

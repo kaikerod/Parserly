@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, gettempdir
 from uuid import UUID
 
 import httpx
@@ -332,7 +332,8 @@ class AnalysisService:
             raise InvalidResumeFile("unsupported_type")
 
         total_bytes = 0
-        with NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_dir = self._upload_temp_dir()
+        with NamedTemporaryFile(delete=False, suffix=suffix, dir=temp_dir) as temp_file:
             temp_path = Path(temp_file.name)
             while chunk := await upload_file.read(1024 * 1024):
                 total_bytes += len(chunk)
@@ -357,6 +358,11 @@ class AnalysisService:
             raise InvalidResumeFile("insufficient_content")
 
         return temp_path
+
+    def _upload_temp_dir(self) -> Path:
+        temp_dir = Path(self.settings.upload_tmp_dir or gettempdir())
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        return temp_dir
 
     async def _extract_text(self, file_path: Path, filename: str) -> ExtractedResumeText:
         suffix = Path(filename).suffix.lower()
