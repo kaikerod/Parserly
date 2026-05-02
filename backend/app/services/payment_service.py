@@ -28,12 +28,32 @@ CREATE_CHARGE_RATE_LIMIT_MAX_REQUESTS = 5
 ABACATEPAY_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=10.0, pool=5.0)
 
 _RATE_LIMIT_SCRIPT = """
-local current = redis.call("INCR", KEYS[1])
+local current = tonumber(redis.call("GET", KEYS[1]) or "0")
+local limit = tonumber(ARGV[2])
+if current >= limit then
+    local ttl = redis.call("TTL", KEYS[1])
+    if ttl < 0 then
+        redis.call("EXPIRE", KEYS[1], ARGV[1])
+        ttl = tonumber(ARGV[1])
+    end
+    return { current, ttl, 0 }
+end
+
+current = redis.call("INCR", KEYS[1])
 if current == 1 then
     redis.call("EXPIRE", KEYS[1], ARGV[1])
 end
 local ttl = redis.call("TTL", KEYS[1])
-return { current, ttl }
+return { current, ttl, 1 }
+"""
+
+_RELEASE_RATE_LIMIT_SCRIPT = """
+local current = redis.call("DECR", KEYS[1])
+if current <= 0 then
+    redis.call("DEL", KEYS[1])
+    return 0
+end
+return current
 """
 
 
@@ -44,7 +64,9 @@ class PaymentRateLimitExceeded(Exception):
 
 
 class PaymentProviderUnavailable(Exception):
-    pass
+    def __init__(self, message: str | None = None) -> None:
+        self.message = message or "Nao foi possivel gerar a cobranca PIX no momento."
+        super().__init__(self.message)
 
 
 class InvalidWebhookPayload(Exception):
@@ -82,7 +104,12 @@ class PaymentService:
     async def create_charge(self, user: User) -> PaymentCharge:
         await self._enforce_create_charge_rate_limit(user.id)
 
-        provider_charge = await self._create_abacatepay_pix(user)
+        try:
+            provider_charge = await self._create_abacatepay_pix(user)
+        except PaymentProviderUnavailable:
+            await self._release_create_charge_rate_limit(user.id)
+            raise
+
         payment = Payment(
             user_id=user.id,
             billing_id=provider_charge.billing_id,
@@ -151,7 +178,7 @@ class PaymentService:
 
     async def _create_abacatepay_pix(self, user: User) -> PaymentCharge:
         if not self.settings.abacatepay_api_key:
-            raise PaymentProviderUnavailable("missing AbacatePay API key")
+            raise PaymentProviderUnavailable("A chave da AbacatePay nao esta configurada.")
 
         payload = {
             "method": "PIX",
@@ -159,13 +186,6 @@ class PaymentService:
                 "amount": self.settings.analysis_price_cents,
                 "description": f"Pacote Parserly - {PAID_ANALYSIS_CREDITS} analises ATS",
                 "expiresIn": ABACATEPAY_PIX_EXPIRATION_SECONDS,
-                "customer": {
-                    "email": user.email,
-                },
-                "metadata": {
-                    "user_id": str(user.id),
-                    "analysis_credits": PAID_ANALYSIS_CREDITS,
-                },
             },
         }
 
@@ -178,8 +198,8 @@ class PaymentService:
                 )
                 response.raise_for_status()
             except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
-                logger.warning("AbacatePay create-charge request failed")
-                raise PaymentProviderUnavailable from exc
+                self._log_abacatepay_request_error(exc)
+                raise PaymentProviderUnavailable(self._abacatepay_user_message(exc)) from exc
 
         return self._parse_charge_response(response)
 
@@ -231,6 +251,14 @@ class PaymentService:
         )
 
         if not billing_id or not pix_copy_paste or not pix_qr_code:
+            logger.warning(
+                "AbacatePay create-charge response missing required fields: "
+                "billing_id=%s pix_copy_paste=%s pix_qr_code=%s response=%s",
+                bool(billing_id),
+                bool(pix_copy_paste),
+                bool(pix_qr_code),
+                self._abacatepay_response_summary(response),
+            )
             raise PaymentProviderUnavailable
 
         expires_at = self._parse_expires_at(expires_at_raw)
@@ -318,10 +346,21 @@ class PaymentService:
             1,
             self._create_charge_rate_limit_key(user_id),
             CREATE_CHARGE_RATE_LIMIT_SECONDS,
+            CREATE_CHARGE_RATE_LIMIT_MAX_REQUESTS,
         )
-        current_count, ttl = int(result[0]), int(result[1])
-        if current_count > CREATE_CHARGE_RATE_LIMIT_MAX_REQUESTS:
+        current_count, ttl, allowed = int(result[0]), int(result[1]), int(result[2])
+        if not allowed:
             raise PaymentRateLimitExceeded(retry_after=max(ttl, 1))
+
+    async def _release_create_charge_rate_limit(self, user_id: UUID) -> None:
+        try:
+            await self.redis.eval(
+                _RELEASE_RATE_LIMIT_SCRIPT,
+                1,
+                self._create_charge_rate_limit_key(user_id),
+            )
+        except Exception:
+            logger.exception("Failed to release create-charge rate limit for user_id: %s", user_id)
 
     async def _get_payment_by_billing_id(self, billing_id: str) -> Payment | None:
         result = await self.db_session.execute(
@@ -335,8 +374,76 @@ class PaymentService:
     def _abacatepay_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.settings.abacatepay_api_key}",
+            "Accept": "application/json",
             "Content-Type": "application/json",
         }
+
+    @staticmethod
+    def _log_abacatepay_request_error(exc: Exception) -> None:
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+            logger.warning(
+                "AbacatePay create-charge request failed: status=%s response=%s",
+                exc.response.status_code,
+                PaymentService._abacatepay_response_summary(exc.response),
+            )
+            return
+
+        logger.warning(
+            "AbacatePay create-charge request failed: error=%s",
+            exc.__class__.__name__,
+        )
+
+    @staticmethod
+    def _abacatepay_user_message(exc: Exception) -> str:
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+            provider_error = PaymentService._abacatepay_error_value(exc.response)
+            if exc.response.status_code == 401 and provider_error == "Insufficient permissions":
+                return (
+                    "A chave da AbacatePay nao tem permissao para criar checkout "
+                    "transparente PIX. Gere uma chave com permissao CHECKOUT:READ."
+                )
+            if exc.response.status_code == 401 and provider_error == "API key version mismatch":
+                return "A chave da AbacatePay nao e compativel com esta versao da API."
+            if exc.response.status_code == 401 and provider_error == "Invalid or inactive API key":
+                return "A chave da AbacatePay e invalida ou esta inativa."
+
+        return "Nao foi possivel gerar a cobranca PIX no momento."
+
+    @staticmethod
+    def _abacatepay_error_value(response: httpx.Response) -> str | None:
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            return None
+
+        if not isinstance(payload, dict):
+            return None
+
+        error = payload.get("error")
+        return error if isinstance(error, str) else None
+
+    @staticmethod
+    def _abacatepay_response_summary(response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            return response.text[:240]
+
+        if not isinstance(payload, dict):
+            return str(payload)[:240]
+
+        summary: dict[str, Any] = {}
+        for key in ("success", "error", "message"):
+            if key in payload:
+                summary[key] = payload[key]
+
+        data = payload.get("data")
+        if isinstance(data, dict):
+            for key in ("status", "message", "error"):
+                if key in data:
+                    summary[f"data.{key}"] = data[key]
+
+        return json.dumps(summary or payload, ensure_ascii=True)[:500]
 
     @staticmethod
     def _extract_event_type(payload: dict[str, Any]) -> str | None:

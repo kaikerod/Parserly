@@ -58,7 +58,7 @@ async def create_charge(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
                 "error": "payment_provider_unavailable",
-                "message": "Nao foi possivel gerar a cobranca PIX no momento.",
+                "message": exc.message,
             },
         ) from exc
 
