@@ -10,6 +10,7 @@ import {
   Loader2,
   LogOut,
   LockKeyhole,
+  QrCode,
   RotateCw,
   Sparkles,
   UsersRound,
@@ -40,6 +41,8 @@ const PAYMENT_REQUIRED_NOTICE =
   "Você atingiu o limite gratuito. Pague via PIX para liberar a próxima análise.";
 const PAYMENT_NOT_CONFIRMED_NOTICE =
   "Pagamento não confirmado. O currículo ainda não foi enviado; pague via PIX para liberar a análise.";
+const PAYMENT_EXPIRED_NOTICE =
+  "O QR Code PIX expirou sem confirmação. Reabra o pagamento para gerar um novo QR Code.";
 const QUOTA_CHECK_UNAVAILABLE_MESSAGE =
   "Não conseguimos verificar seus créditos agora. Tente novamente em instantes. Se você fechou o pagamento antes da confirmação, reabra o PIX e aguarde a confirmação.";
 
@@ -91,11 +94,13 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [submissionMode, setSubmissionMode] = useState<SubmissionMode>("manual");
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [hasPendingPixCharge, setHasPendingPixCharge] = useState(false);
   const [autoOpenedPayment, setAutoOpenedPayment] = useState(false);
   const [activeNavigationDetail, setActiveNavigationDetail] = useState(NAVIGATION_DETAILS[0]);
   const [error, setError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
   const ActiveNavigationIcon = activeNavigationDetail.icon;
+  const paymentActionLabel = hasPendingPixCharge ? "Reabrir QR Code PIX" : "Abrir pagamento PIX";
 
   useEffect(() => {
     if (!isAuthenticated || !paymentRequired || autoOpenedPayment) {
@@ -169,6 +174,8 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
 
   const handlePaymentConfirmed = useCallback(() => {
     setPaywallOpen(false);
+    setHasPendingPixCharge(false);
+    setError(null);
 
     if (pendingFile) {
       void runAnalysis(pendingFile, "after-payment");
@@ -182,6 +189,21 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
     setPaywallOpen(false);
     setPaymentNotice(pendingFile ? PAYMENT_NOT_CONFIRMED_NOTICE : PAYMENT_REQUIRED_NOTICE);
   }, [pendingFile]);
+
+  const handleOpenPayment = useCallback(() => {
+    setError(null);
+    setPaywallOpen(true);
+  }, []);
+
+  const handlePixChargeCreated = useCallback(() => {
+    setHasPendingPixCharge(true);
+    setPaymentNotice(null);
+  }, []);
+
+  const handlePixChargeExpired = useCallback(() => {
+    setHasPendingPixCharge(false);
+    setPaymentNotice(PAYMENT_EXPIRED_NOTICE);
+  }, []);
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-5 text-paper sm:px-6 lg:px-8">
@@ -330,14 +352,24 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
             {error ? (
               <div className="mt-5 flex items-start gap-3 rounded-md border border-coral/35 bg-coral/10 px-4 py-3 text-sm text-paper">
                 <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral" aria-hidden="true" />
-                <p>{error}</p>
+                <div className="min-w-0">
+                  <p>{error}</p>
+                  {hasPendingPixCharge ? (
+                    <PaymentActionButton label="Reabrir QR Code PIX" onClick={handleOpenPayment} />
+                  ) : null}
+                </div>
               </div>
             ) : null}
 
             {paymentNotice ? (
               <div className="mt-5 flex items-start gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
                 <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
-                <p>{paymentNotice}</p>
+                <div className="min-w-0">
+                  <p>{paymentNotice}</p>
+                  {isAuthenticated ? (
+                    <PaymentActionButton label={paymentActionLabel} onClick={handleOpenPayment} />
+                  ) : null}
+                </div>
               </div>
             ) : null}
 
@@ -372,9 +404,24 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
         open={paywallOpen}
         fileName={pendingFile?.name}
         onClose={handlePaywallClosed}
+        onChargeCreated={handlePixChargeCreated}
+        onChargeExpired={handlePixChargeExpired}
         onPaymentConfirmed={handlePaymentConfirmed}
       />
     </main>
+  );
+}
+
+function PaymentActionButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="focus-ring mt-3 inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/45 hover:bg-fog"
+    >
+      <QrCode className="h-4 w-4 text-acid" aria-hidden="true" />
+      {label}
+    </button>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
   Copy,
@@ -20,6 +20,8 @@ interface PaywallModalProps {
   open: boolean;
   fileName?: string;
   onClose: () => void;
+  onChargeCreated?: () => void;
+  onChargeExpired?: () => void;
   onPaymentConfirmed: () => void;
 }
 
@@ -27,6 +29,8 @@ export function PaywallModal({
   open,
   fileName,
   onClose,
+  onChargeCreated,
+  onChargeExpired,
   onPaymentConfirmed
 }: PaywallModalProps) {
   const [phase, setPhase] = useState<PaywallPhase>("idle");
@@ -36,22 +40,31 @@ export function PaywallModal({
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [qrCodeSrc, setQrCodeSrc] = useState<string | null>(null);
   const confirmedRef = useRef(false);
+  const expirationNotifiedRef = useRef(false);
   const hasPendingAnalysis = Boolean(fileName);
 
   const amount = charge ? formatCurrency(charge.amount_cents) : "R$ 19,90";
   const analysisCredits = charge?.analysis_credits ?? 10;
 
-  useEffect(() => {
-    if (!open) {
-      setPhase("idle");
-      setCharge(null);
-      setError(null);
-      setCopyState("idle");
-      setRemainingSeconds(0);
-      setQrCodeSrc(null);
-      confirmedRef.current = false;
+  const resetPaymentState = useCallback(() => {
+    setPhase("idle");
+    setCharge(null);
+    setError(null);
+    setCopyState("idle");
+    setRemainingSeconds(0);
+    setQrCodeSrc(null);
+    confirmedRef.current = false;
+    expirationNotifiedRef.current = false;
+  }, []);
+
+  const markChargeExpired = useCallback(() => {
+    setPhase("expired");
+
+    if (!expirationNotifiedRef.current) {
+      expirationNotifiedRef.current = true;
+      onChargeExpired?.();
     }
-  }, [open]);
+  }, [onChargeExpired]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,7 +112,7 @@ export function PaywallModal({
   }, [charge]);
 
   useEffect(() => {
-    if (!open || !charge || phase !== "waiting") {
+    if (!charge || phase !== "waiting") {
       return;
     }
 
@@ -112,17 +125,17 @@ export function PaywallModal({
       setRemainingSeconds(nextRemaining);
 
       if (nextRemaining === 0) {
-        setPhase("expired");
+        markChargeExpired();
       }
     };
 
     updateRemainingTime();
     const interval = window.setInterval(updateRemainingTime, 1000);
     return () => window.clearInterval(interval);
-  }, [charge, open, phase]);
+  }, [charge, markChargeExpired, phase]);
 
   useEffect(() => {
-    if (!open || !charge || phase !== "waiting") {
+    if (!charge || phase !== "waiting") {
       return;
     }
 
@@ -141,12 +154,13 @@ export function PaywallModal({
         confirmedRef.current = true;
         setPhase("confirmed");
         window.setTimeout(() => {
+          resetPaymentState();
           onPaymentConfirmed();
         }, 350);
       }
 
       if (eventName === "payment_expired") {
-        setPhase("expired");
+        markChargeExpired();
       }
     };
 
@@ -164,7 +178,7 @@ export function PaywallModal({
     };
 
     return () => eventSource.close();
-  }, [charge, onPaymentConfirmed, open, phase]);
+  }, [charge, markChargeExpired, onPaymentConfirmed, phase, resetPaymentState]);
 
   async function handleCreateCharge() {
     setPhase("creating");
@@ -173,8 +187,11 @@ export function PaywallModal({
 
     try {
       const nextCharge = await createPixCharge();
+      confirmedRef.current = false;
+      expirationNotifiedRef.current = false;
       setCharge(nextCharge);
       setPhase("waiting");
+      onChargeCreated?.();
     } catch (requestError) {
       setError(
         requestError instanceof Error
