@@ -126,8 +126,3 @@ Key variables are listed in `.env.example`. Essential configurations:
 
 Este repositório utiliza a [Business Source License 1.1](./LICENSE).
 This repository uses the [Business Source License 1.1](./LICENSE).
-
-<div align="center">
-  <sub>Feito com ❤️ por Kaike</sub>
-</div>
-
