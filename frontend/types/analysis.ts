@@ -40,4 +40,5 @@ export interface AnalysisQuotaResponse {
   remaining_analyses: number;
   payment_required: boolean;
   registration_required: boolean;
+  message?: string | null;
 }

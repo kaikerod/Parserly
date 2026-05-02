@@ -22,6 +22,7 @@ import { Dropzone } from "./dropzone";
 import { PaywallModal } from "./paywall-modal";
 
 type SubmissionMode = "manual" | "after-payment";
+type AnalysisRequestStep = "quota" | "analysis";
 
 const AUTHENTICATED_DASHBOARD_METRICS = [
   { label: "Quota grátis", value: "3", detail: "análises por conta" },
@@ -34,6 +35,13 @@ const GUEST_DASHBOARD_METRICS = [
   { label: "Arquivos", value: "PDF/DOCX", detail: "até 5 MB" },
   { label: "Após limite", value: "Cadastro", detail: "magic link por e-mail" }
 ];
+
+const PAYMENT_REQUIRED_NOTICE =
+  "Você atingiu o limite gratuito. Pague via PIX para liberar a próxima análise.";
+const PAYMENT_NOT_CONFIRMED_NOTICE =
+  "Pagamento não confirmado. O currículo ainda não foi enviado; pague via PIX para liberar a análise.";
+const QUOTA_CHECK_UNAVAILABLE_MESSAGE =
+  "Não conseguimos verificar seus créditos agora. Tente novamente em instantes. Se você fechou o pagamento antes da confirmação, reabra o PIX e aguarde a confirmação.";
 
 const NAVIGATION_DETAILS = [
   {
@@ -108,6 +116,8 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
     setSubmissionMode(mode);
     setIsSubmitting(true);
 
+    let requestStep: AnalysisRequestStep = "quota";
+
     try {
       const quota = await getAnalysisQuota();
       if (quota.registration_required) {
@@ -116,16 +126,19 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
       }
 
       if (quota.payment_required) {
+        setPaymentNotice(quota.message ?? PAYMENT_REQUIRED_NOTICE);
         setPaywallOpen(true);
         return;
       }
 
+      requestStep = "analysis";
       const result = await submitResumeForAnalysis(file);
       setAnalysis(result);
       setPaywallOpen(false);
       setPendingFile(null);
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 402) {
+        setPaymentNotice(requestError.message || PAYMENT_REQUIRED_NOTICE);
         setPaywallOpen(true);
         return;
       }
@@ -137,11 +150,7 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
         return;
       }
 
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Não foi possível concluir a análise."
-      );
+      setError(resolveAnalysisError(requestError, requestStep));
     } finally {
       setIsSubmitting(false);
     }
@@ -168,6 +177,11 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
 
     setPaymentNotice("Pagamento confirmado. Você tem 10 análises liberadas.");
   }, [pendingFile, runAnalysis]);
+
+  const handlePaywallClosed = useCallback(() => {
+    setPaywallOpen(false);
+    setPaymentNotice(pendingFile ? PAYMENT_NOT_CONFIRMED_NOTICE : PAYMENT_REQUIRED_NOTICE);
+  }, [pendingFile]);
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-5 text-paper sm:px-6 lg:px-8">
@@ -357,7 +371,7 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
       <PaywallModal
         open={paywallOpen}
         fileName={pendingFile?.name}
-        onClose={() => setPaywallOpen(false)}
+        onClose={handlePaywallClosed}
         onPaymentConfirmed={handlePaymentConfirmed}
       />
     </main>
@@ -415,6 +429,14 @@ function isRegistrationRequiredError(error: ApiError) {
 
   const detail = error.detail.detail;
   return isRecord(detail) && detail.error === "registration_required";
+}
+
+function resolveAnalysisError(error: unknown, requestStep: AnalysisRequestStep) {
+  if (requestStep === "quota" && error instanceof ApiError && error.status >= 500) {
+    return QUOTA_CHECK_UNAVAILABLE_MESSAGE;
+  }
+
+  return error instanceof Error ? error.message : "Não foi possível concluir a análise.";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

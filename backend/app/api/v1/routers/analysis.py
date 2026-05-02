@@ -31,6 +31,14 @@ from app.services.analysis_service import (
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
+PAYMENT_REQUIRED_MESSAGE = (
+    "Você atingiu o limite de análises gratuitas. Pague via PIX para liberar "
+    "novas análises."
+)
+REGISTRATION_REQUIRED_MESSAGE = (
+    "Você atingiu o limite de 3 análises grátis. Cadastre-se para continuar."
+)
+
 
 def get_analysis_service(
     db_session: Annotated[AsyncSession, Depends(get_db_session)],
@@ -49,19 +57,24 @@ async def get_analysis_quota(
         guest_id = normalize_guest_id(request.cookies.get(GUEST_ANALYSIS_COOKIE_NAME))
         analyses_used = await get_guest_analyses_used(redis_client, guest_id)
         remaining_analyses = max(0, FREE_ANALYSIS_LIMIT - analyses_used)
+        registration_required = remaining_analyses == 0
         return AnalysisQuotaResponse(
             authenticated=False,
             remaining_analyses=remaining_analyses,
             payment_required=False,
-            registration_required=remaining_analyses == 0,
+            registration_required=registration_required,
+            message=REGISTRATION_REQUIRED_MESSAGE if registration_required else None,
         )
 
-    remaining_analyses = max(0, FREE_ANALYSIS_LIMIT - current_user.analyses_used)
+    analyses_used = normalize_analyses_used(current_user.analyses_used)
+    remaining_analyses = max(0, FREE_ANALYSIS_LIMIT - analyses_used)
+    payment_required = remaining_analyses == 0
     return AnalysisQuotaResponse(
         authenticated=True,
         remaining_analyses=remaining_analyses,
-        payment_required=remaining_analyses == 0,
+        payment_required=payment_required,
         registration_required=False,
+        message=PAYMENT_REQUIRED_MESSAGE if payment_required else None,
     )
 
 
@@ -153,6 +166,13 @@ class GuestQuotaExceeded(Exception):
     def __init__(self, analyses_used: int) -> None:
         self.analyses_used = analyses_used
         super().__init__("guest analysis quota exceeded")
+
+
+def normalize_analyses_used(raw_analyses_used: object) -> int:
+    try:
+        return int(raw_analyses_used or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def get_or_create_guest_id(request: Request) -> str:
