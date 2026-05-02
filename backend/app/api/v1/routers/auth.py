@@ -22,6 +22,7 @@ from app.services.auth_service import (
     InvalidMagicLinkToken,
     RateLimitExceeded,
 )
+from app.services.email_service import EmailDeliveryError, EmailService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _settings = get_settings()
@@ -32,7 +33,13 @@ def get_auth_service(
     redis_client: Annotated[Redis, Depends(get_redis_client)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthService:
-    return AuthService(db_session=db_session, redis_client=redis_client, settings=settings)
+    email_service = EmailService(settings=settings)
+    return AuthService(
+        db_session=db_session,
+        redis_client=redis_client,
+        settings=settings,
+        email_service=email_service,
+    )
 
 
 def set_auth_cookie(response: Response, access_token: str, max_age: int) -> None:
@@ -77,6 +84,11 @@ async def request_magic_link(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many magic link requests for this email.",
             headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+    except EmailDeliveryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Nao foi possivel enviar o link de acesso.",
         ) from exc
 
     magic_link = None

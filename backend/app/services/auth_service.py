@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.quotas import FREE_ANALYSIS_LIMIT, get_guest_analyses_used
 from app.models.user import User
+from app.services.email_service import EmailDeliveryError, EmailService
 
 MAGIC_LINK_TTL_SECONDS = 15 * 60
 MAGIC_LINK_RATE_LIMIT_SECONDS = 10 * 60
@@ -79,10 +80,12 @@ class AuthService:
         db_session: AsyncSession,
         redis_client: Redis,
         settings: Settings,
+        email_service: EmailService,
     ) -> None:
         self.db_session = db_session
         self.redis = redis_client
         self.settings = settings
+        self.email_service = email_service
 
     async def request_magic_link(
         self,
@@ -96,8 +99,9 @@ class AuthService:
         token = uuid4()
         magic_link = self._build_magic_link(token)
         requires_payment = await self._is_guest_quota_exhausted(guest_id)
+        magic_link_key = self._magic_link_key(token)
         await self.redis.set(
-            self._magic_link_key(token),
+            magic_link_key,
             self._encode_magic_link_payload(
                 MagicLinkPayload(
                     email=normalized_email,
@@ -106,6 +110,16 @@ class AuthService:
             ),
             ex=MAGIC_LINK_TTL_SECONDS,
         )
+
+        try:
+            await self.email_service.send_magic_link(
+                email=normalized_email,
+                magic_link=magic_link,
+                expires_in=MAGIC_LINK_TTL_SECONDS,
+            )
+        except EmailDeliveryError:
+            await self.redis.delete(magic_link_key)
+            raise
 
         return MagicLinkRequestResult(
             email=normalized_email,
