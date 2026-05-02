@@ -14,6 +14,7 @@ from app.core.database import get_db_session
 from app.core.redis import get_redis_client
 from app.models.user import User
 from app.services.auth_service import AuthService, JWT_ALGORITHM
+from app.services.email_service import EmailService
 
 
 async def get_current_user(
@@ -65,6 +66,7 @@ async def _get_user_from_access_token(
         db_session=db_session,
         redis_client=redis_client,
         settings=settings,
+        email_service=EmailService(settings=settings),
     )
     if await auth_service.is_access_token_blocklisted(access_token):
         raise HTTPException(
