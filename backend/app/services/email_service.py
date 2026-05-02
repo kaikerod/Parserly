@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 from html import escape
 
-import resend
-
 from app.core.config import Settings
 
 
@@ -31,8 +29,13 @@ class EmailService:
         if not self.settings.email_from or self.settings.email_from == "noreply@localhost":
             raise EmailDeliveryError("Sender email is not configured.")
 
+        try:
+            import resend
+        except ModuleNotFoundError as exc:
+            raise EmailDeliveryError("Resend SDK is not installed.") from exc
+
         resend.api_key = self.settings.resend_api_key
-        params: resend.Emails.SendParams = {
+        params: dict[str, object] = {
             "from": self.settings.email_from,
             "to": [email],
             "subject": "Seu link de acesso ao Parserly",

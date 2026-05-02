@@ -21,6 +21,8 @@ from app.services.email_service import EmailDeliveryError, EmailService
 MAGIC_LINK_TTL_SECONDS = 15 * 60
 MAGIC_LINK_RATE_LIMIT_SECONDS = 10 * 60
 MAGIC_LINK_RATE_LIMIT_MAX_REQUESTS = 3
+MAGIC_LINK_IP_RATE_LIMIT_SECONDS = 10 * 60
+MAGIC_LINK_IP_RATE_LIMIT_MAX_REQUESTS = 12
 JWT_TTL_SECONDS = 7 * 24 * 60 * 60
 JWT_ALGORITHM = "HS256"
 
@@ -92,9 +94,10 @@ class AuthService:
         email: str,
         *,
         guest_id: str | None = None,
+        client_ip: str | None = None,
     ) -> MagicLinkRequestResult:
         normalized_email = email.lower()
-        await self._enforce_magic_link_rate_limit(normalized_email)
+        await self._enforce_magic_link_rate_limit(normalized_email, client_ip)
 
         token = uuid4()
         magic_link = self._build_magic_link(token)
@@ -199,16 +202,39 @@ class AuthService:
         }
         return jwt.encode(payload, self.settings.secret_key, algorithm=JWT_ALGORITHM)
 
-    async def _enforce_magic_link_rate_limit(self, email: str) -> None:
-        key = self._magic_link_rate_limit_key(email)
+    async def _enforce_magic_link_rate_limit(
+        self,
+        email: str,
+        client_ip: str | None,
+    ) -> None:
+        await self._enforce_rate_limit(
+            key=self._magic_link_rate_limit_key(email),
+            window_seconds=MAGIC_LINK_RATE_LIMIT_SECONDS,
+            max_requests=MAGIC_LINK_RATE_LIMIT_MAX_REQUESTS,
+        )
+
+        if client_ip:
+            await self._enforce_rate_limit(
+                key=self._magic_link_ip_rate_limit_key(client_ip),
+                window_seconds=MAGIC_LINK_IP_RATE_LIMIT_SECONDS,
+                max_requests=MAGIC_LINK_IP_RATE_LIMIT_MAX_REQUESTS,
+            )
+
+    async def _enforce_rate_limit(
+        self,
+        *,
+        key: str,
+        window_seconds: int,
+        max_requests: int,
+    ) -> None:
         result = await self.redis.eval(
             _RATE_LIMIT_SCRIPT,
             1,
             key,
-            MAGIC_LINK_RATE_LIMIT_SECONDS,
+            window_seconds,
         )
         current_count, ttl = int(result[0]), int(result[1])
-        if current_count > MAGIC_LINK_RATE_LIMIT_MAX_REQUESTS:
+        if current_count > max_requests:
             raise RateLimitExceeded(retry_after=max(ttl, 1))
 
     async def _consume_magic_link(self, token: UUID) -> MagicLinkPayload | None:
@@ -319,6 +345,11 @@ class AuthService:
     def _magic_link_rate_limit_key(email: str) -> str:
         email_hash = sha256(email.encode("utf-8")).hexdigest()
         return f"auth:magic-link:rate:{email_hash}"
+
+    @staticmethod
+    def _magic_link_ip_rate_limit_key(client_ip: str) -> str:
+        ip_hash = sha256(client_ip.encode("utf-8")).hexdigest()
+        return f"auth:magic-link:ip-rate:{ip_hash}"
 
     @staticmethod
     def _jwt_blocklist_key(access_token: str) -> str:

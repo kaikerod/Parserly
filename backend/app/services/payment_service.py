@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.observability import log_structured
 from app.models.payment import Payment
 from app.models.user import User
 
@@ -122,9 +123,11 @@ class PaymentService:
             await self.db_session.commit()
         except IntegrityError as exc:
             await self.db_session.rollback()
-            logger.warning(
-                "Duplicate billing_id returned by AbacatePay: %s",
-                provider_charge.billing_id,
+            log_structured(
+                logger,
+                logging.WARNING,
+                "abacatepay_duplicate_billing_id",
+                billing_id=provider_charge.billing_id,
             )
             raise PaymentProviderUnavailable from exc
         except Exception:
@@ -163,7 +166,7 @@ class PaymentService:
         event_type = self._extract_event_type(event_payload)
         billing_id = self._extract_billing_id(event_payload)
         if billing_id is None:
-            logger.warning("AbacatePay webhook without billing_id")
+            log_structured(logger, logging.WARNING, "abacatepay_webhook_missing_billing_id")
             return WebhookProcessResult(status="ignored")
 
         if event_type in {"billing.paid", "transparent.completed", "checkout.completed"}:
@@ -173,7 +176,13 @@ class PaymentService:
         if event_type in {"billing.expired", "transparent.lost", "checkout.lost"}:
             return await self._process_expired_event(billing_id)
 
-        logger.info("Ignored AbacatePay webhook event type: %s", event_type)
+        log_structured(
+            logger,
+            logging.INFO,
+            "abacatepay_webhook_ignored_event",
+            event_type=event_type,
+            billing_id=billing_id,
+        )
         return WebhookProcessResult(status="ignored", billing_id=billing_id)
 
     async def _create_abacatepay_pix(self, user: User) -> PaymentCharge:
@@ -251,13 +260,14 @@ class PaymentService:
         )
 
         if not billing_id or not pix_copy_paste or not pix_qr_code:
-            logger.warning(
-                "AbacatePay create-charge response missing required fields: "
-                "billing_id=%s pix_copy_paste=%s pix_qr_code=%s response=%s",
-                bool(billing_id),
-                bool(pix_copy_paste),
-                bool(pix_qr_code),
-                self._abacatepay_response_summary(response),
+            log_structured(
+                logger,
+                logging.WARNING,
+                "abacatepay_charge_response_invalid",
+                has_billing_id=bool(billing_id),
+                has_pix_copy_paste=bool(pix_copy_paste),
+                has_pix_qr_code=bool(pix_qr_code),
+                response=self._abacatepay_response_summary(response),
             )
             raise PaymentProviderUnavailable
 
@@ -288,16 +298,33 @@ class PaymentService:
         if payment_user_id is None:
             existing_payment = await self._get_payment_by_billing_id(billing_id)
             if existing_payment is not None and existing_payment.status == "paid":
-                logger.warning("Duplicate webhook received for billing_id: %s", billing_id)
+                log_structured(
+                    logger,
+                    logging.WARNING,
+                    "abacatepay_webhook_duplicate",
+                    billing_id=billing_id,
+                    status="paid",
+                )
                 await self.db_session.rollback()
                 return WebhookProcessResult(status="duplicate", billing_id=billing_id)
 
-            logger.warning("Paid webhook for unknown billing_id: %s", billing_id)
+            log_structured(
+                logger,
+                logging.WARNING,
+                "abacatepay_webhook_unknown_billing_id",
+                billing_id=billing_id,
+                event_status="paid",
+            )
             await self.db_session.rollback()
             return WebhookProcessResult(status="ignored", billing_id=billing_id)
 
         if payload_user_id is not None and payload_user_id != payment_user_id:
-            logger.warning("Webhook user_id metadata does not match billing_id: %s", billing_id)
+            log_structured(
+                logger,
+                logging.WARNING,
+                "abacatepay_webhook_user_mismatch",
+                billing_id=billing_id,
+            )
 
         await self.db_session.execute(
             update(User)
@@ -318,11 +345,22 @@ class PaymentService:
         return WebhookProcessResult(status="processed", billing_id=billing_id)
 
     async def _process_expired_event(self, billing_id: str) -> WebhookProcessResult:
-        await self.db_session.execute(
+        update_result = await self.db_session.execute(
             update(Payment)
-            .where(Payment.billing_id == billing_id, Payment.status != "paid")
+            .where(Payment.billing_id == billing_id, Payment.status == "pending")
             .values(status="expired")
+            .returning(Payment.id)
         )
+        expired_payment_id = update_result.scalar_one_or_none()
+        if expired_payment_id is None:
+            existing_payment = await self._get_payment_by_billing_id(billing_id)
+            if existing_payment is not None and existing_payment.status in {"expired", "paid"}:
+                await self.db_session.rollback()
+                return WebhookProcessResult(status="duplicate", billing_id=billing_id)
+
+            await self.db_session.rollback()
+            return WebhookProcessResult(status="ignored", billing_id=billing_id)
+
         await self.db_session.commit()
         return WebhookProcessResult(status="expired", billing_id=billing_id)
 
@@ -338,7 +376,12 @@ class PaymentService:
         try:
             await self.redis.publish(channel, message)
         except Exception:
-            logger.exception("Failed to publish analysis unlock event for user_id: %s", user_id)
+            log_structured(
+                logger,
+                logging.ERROR,
+                "payment_unlock_publish_failed",
+                user_id=str(user_id),
+            )
 
     async def _enforce_create_charge_rate_limit(self, user_id: UUID) -> None:
         result = await self.redis.eval(
@@ -360,7 +403,12 @@ class PaymentService:
                 self._create_charge_rate_limit_key(user_id),
             )
         except Exception:
-            logger.exception("Failed to release create-charge rate limit for user_id: %s", user_id)
+            log_structured(
+                logger,
+                logging.ERROR,
+                "payment_rate_limit_release_failed",
+                user_id=str(user_id),
+            )
 
     async def _get_payment_by_billing_id(self, billing_id: str) -> Payment | None:
         result = await self.db_session.execute(
@@ -381,16 +429,20 @@ class PaymentService:
     @staticmethod
     def _log_abacatepay_request_error(exc: Exception) -> None:
         if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
-            logger.warning(
-                "AbacatePay create-charge request failed: status=%s response=%s",
-                exc.response.status_code,
-                PaymentService._abacatepay_response_summary(exc.response),
+            log_structured(
+                logger,
+                logging.WARNING,
+                "abacatepay_create_charge_failed",
+                status=exc.response.status_code,
+                response=PaymentService._abacatepay_response_summary(exc.response),
             )
             return
 
-        logger.warning(
-            "AbacatePay create-charge request failed: error=%s",
-            exc.__class__.__name__,
+        log_structured(
+            logger,
+            logging.WARNING,
+            "abacatepay_create_charge_failed",
+            error=exc.__class__.__name__,
         )
 
     @staticmethod

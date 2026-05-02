@@ -30,12 +30,14 @@ async def get_current_user(
             detail="Authentication required.",
         )
 
-    return await _get_user_from_access_token(
+    user = await _get_user_from_access_token(
         access_token=access_token,
         db_session=db_session,
         redis_client=redis_client,
         settings=settings,
     )
+    request.state.user_id = str(user.id)
+    return user
 
 
 async def get_optional_current_user(
@@ -48,12 +50,14 @@ async def get_optional_current_user(
     if not access_token:
         return None
 
-    return await _get_user_from_access_token(
+    user = await _get_user_from_access_token(
         access_token=access_token,
         db_session=db_session,
         redis_client=redis_client,
         settings=settings,
     )
+    request.state.user_id = str(user.id)
+    return user
 
 
 async def _get_user_from_access_token(

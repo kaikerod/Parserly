@@ -8,19 +8,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile, gettempdir
+from time import monotonic
 from uuid import UUID
 
 import httpx
-import pdfplumber
-from docx import Document
-from docx.table import Table
-from docx.text.paragraph import Paragraph
 from fastapi import UploadFile
 from pydantic import ValidationError
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.observability import log_structured
 from app.core.quotas import FREE_ANALYSIS_LIMIT
 from app.models.analysis import Analysis
 from app.models.user import User
@@ -30,11 +28,19 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_AI_RESUME_CHARS = 18_000
 MIN_RESUME_CHARS = 100
-MAX_AI_ATTEMPTS = 3
+MAX_AI_ATTEMPTS = 2
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
-OPENROUTER_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=10.0, pool=5.0)
+ALLOWED_CONTENT_TYPES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+GENERIC_UPLOAD_CONTENT_TYPES = {"", "application/octet-stream"}
+OPENROUTER_TOTAL_TIMEOUT_SECONDS = 75.0
+OPENROUTER_RETRY_DELAY_SECONDS = 1.0
+OPENROUTER_TIMEOUT = httpx.Timeout(connect=5.0, read=25.0, write=10.0, pool=5.0)
 MIN_RESUME_WORDS = 40
 MIN_ALPHA_RATIO = 0.45
 MAX_RAW_PDF_MARKERS = 3
@@ -331,6 +337,33 @@ class AnalysisService:
             )
             raise InvalidResumeFile("unsupported_type")
 
+        content_type = self._normalized_upload_content_type(upload_file.content_type)
+        if content_type not in ALLOWED_CONTENT_TYPES | GENERIC_UPLOAD_CONTENT_TYPES:
+            self._log_file_rejected(
+                file_type=file_type,
+                extraction_method="not_started",
+                reason="unsupported_type",
+            )
+            raise InvalidResumeFile("unsupported_type")
+
+        declared_size = upload_file.size
+        if declared_size is not None:
+            if declared_size > MAX_UPLOAD_BYTES:
+                self._log_file_rejected(
+                    file_type=file_type,
+                    extraction_method="not_started",
+                    reason="file_too_large",
+                )
+                raise InvalidResumeFile("file_too_large")
+
+            if declared_size == 0:
+                self._log_file_rejected(
+                    file_type=file_type,
+                    extraction_method="not_started",
+                    reason="insufficient_content",
+                )
+                raise InvalidResumeFile("insufficient_content")
+
         total_bytes = 0
         temp_dir = self._upload_temp_dir()
         with NamedTemporaryFile(delete=False, suffix=suffix, dir=temp_dir) as temp_file:
@@ -410,6 +443,8 @@ class AnalysisService:
         raise InvalidResumeFile("unsupported_type")
 
     def _extract_pdf_text(self, file_path: Path) -> tuple[str, int]:
+        import pdfplumber
+
         with file_path.open("rb") as file:
             header = file.read(5)
         if header != b"%PDF-":
@@ -426,6 +461,10 @@ class AnalysisService:
         return self._normalize_extracted_text("\n\n".join(page_texts)), pages_processed
 
     def _extract_docx_text(self, file_path: Path) -> str:
+        from docx import Document
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+
         document = Document(file_path)
         blocks: list[str] = []
 
@@ -557,18 +596,26 @@ class AnalysisService:
         return "unsupported"
 
     @staticmethod
+    def _normalized_upload_content_type(content_type: str | None) -> str:
+        if not content_type:
+            return ""
+
+        return content_type.split(";", 1)[0].strip().lower()
+
+    @staticmethod
     def _log_extraction_accepted(
         extracted_resume: ExtractedResumeText,
         quality: ExtractedTextQuality,
     ) -> None:
-        logger.info(
-            "Resume extraction accepted: file_type=%s extraction_method=%s "
-            "characters=%s words=%s pages_processed=%s",
-            extracted_resume.file_type,
-            extracted_resume.extraction_method,
-            quality.characters,
-            quality.words,
-            extracted_resume.pages_processed,
+        log_structured(
+            logger,
+            logging.INFO,
+            "resume_extraction_accepted",
+            file_type=extracted_resume.file_type,
+            extraction_method=extracted_resume.extraction_method,
+            characters=quality.characters,
+            words=quality.words,
+            pages_processed=extracted_resume.pages_processed,
         )
 
     @staticmethod
@@ -580,15 +627,16 @@ class AnalysisService:
         quality: ExtractedTextQuality,
         reason: str,
     ) -> None:
-        logger.warning(
-            "Resume extraction rejected: file_type=%s extraction_method=%s "
-            "characters=%s words=%s pages_processed=%s reason=%s",
-            file_type,
-            extraction_method,
-            quality.characters,
-            quality.words,
-            pages_processed,
-            reason,
+        log_structured(
+            logger,
+            logging.WARNING,
+            "resume_extraction_rejected",
+            file_type=file_type,
+            extraction_method=extraction_method,
+            characters=quality.characters,
+            words=quality.words,
+            pages_processed=pages_processed,
+            reason=reason,
         )
 
     @staticmethod
@@ -598,23 +646,32 @@ class AnalysisService:
         extraction_method: str,
         reason: str,
     ) -> None:
-        logger.warning(
-            "Resume file rejected: file_type=%s extraction_method=%s reason=%s",
-            file_type,
-            extraction_method,
-            reason,
+        log_structured(
+            logger,
+            logging.WARNING,
+            "resume_file_rejected",
+            file_type=file_type,
+            extraction_method=extraction_method,
+            reason=reason,
         )
 
     async def _analyze_with_openrouter(self, resume_text: str) -> AIAnalysisResult:
         if not self.settings.openrouter_api_key:
-            logger.error("OpenRouter API key is not configured")
+            log_structured(logger, logging.ERROR, "openrouter_not_configured")
             raise AIAnalysisUnavailable
 
+        ai_resume_text = self._prepare_resume_text_for_ai(resume_text)
+
         try:
-            async with asyncio.timeout(90):
-                return await self._run_openrouter_attempts(resume_text)
+            async with asyncio.timeout(OPENROUTER_TOTAL_TIMEOUT_SECONDS):
+                return await self._run_openrouter_attempts(ai_resume_text)
         except asyncio.TimeoutError as exc:
-            logger.error("OpenRouter analysis timed out after retry budget")
+            log_structured(
+                logger,
+                logging.ERROR,
+                "openrouter_retry_budget_timeout",
+                timeout_seconds=OPENROUTER_TOTAL_TIMEOUT_SECONDS,
+            )
             raise AIAnalysisUnavailable from exc
 
     async def _run_openrouter_attempts(self, resume_text: str) -> AIAnalysisResult:
@@ -624,7 +681,16 @@ class AnalysisService:
         async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT) as client:
             for attempt in range(1, MAX_AI_ATTEMPTS + 1):
                 model = self._model_for_attempt(attempt)
+                started_at = monotonic()
                 try:
+                    log_structured(
+                        logger,
+                        logging.INFO,
+                        "openrouter_attempt_started",
+                        attempt=attempt,
+                        model=model,
+                        resume_chars=len(resume_text),
+                    )
                     response = await client.post(
                         OPENROUTER_API_URL,
                         headers=self._openrouter_headers(),
@@ -643,6 +709,15 @@ class AnalysisService:
                     response.raise_for_status()
 
                     report = self._parse_openrouter_response(response)
+                    log_structured(
+                        logger,
+                        logging.INFO,
+                        "openrouter_attempt_succeeded",
+                        attempt=attempt,
+                        model=model,
+                        status=response.status_code,
+                        duration_ms=round((monotonic() - started_at) * 1000, 2),
+                    )
                     return AIAnalysisResult(report=report, model_used=model)
                 except (
                     json.JSONDecodeError,
@@ -653,22 +728,52 @@ class AnalysisService:
                 ) as exc:
                     strict_prompt = True
                     last_error = exc
-                    logger.error(
-                        "Invalid OpenRouter JSON response on attempt %s using model %s",
-                        attempt,
-                        model,
+                    log_structured(
+                        logger,
+                        logging.ERROR,
+                        "openrouter_invalid_json",
+                        attempt=attempt,
+                        model=model,
+                        duration_ms=round((monotonic() - started_at) * 1000, 2),
                     )
                 except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
                     last_error = exc
-                    self._log_openrouter_request_error(exc, attempt, model)
+                    self._log_openrouter_request_error(
+                        exc,
+                        attempt,
+                        model,
+                        round((monotonic() - started_at) * 1000, 2),
+                    )
                     if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
                         if exc.response.status_code not in RETRY_STATUS_CODES:
                             break
 
                 if attempt < MAX_AI_ATTEMPTS:
-                    await asyncio.sleep(2 ** (attempt - 1))
+                    await asyncio.sleep(OPENROUTER_RETRY_DELAY_SECONDS)
 
         raise AIAnalysisUnavailable from last_error
+
+    @staticmethod
+    def _prepare_resume_text_for_ai(resume_text: str) -> str:
+        stripped_text = resume_text.strip()
+        if len(stripped_text) <= MAX_AI_RESUME_CHARS:
+            return stripped_text
+
+        head_chars = MAX_AI_RESUME_CHARS // 2
+        tail_chars = MAX_AI_RESUME_CHARS - head_chars
+        truncated_text = (
+            stripped_text[:head_chars].rstrip()
+            + "\n\n[Texto intermediario truncado por limite operacional.]\n\n"
+            + stripped_text[-tail_chars:].lstrip()
+        )
+        log_structured(
+            logger,
+            logging.INFO,
+            "resume_text_truncated_for_ai",
+            original_chars=len(stripped_text),
+            sent_chars=len(truncated_text),
+        )
+        return truncated_text
 
     def _model_for_attempt(self, attempt: int) -> str:
         if attempt == 1:
@@ -676,22 +781,33 @@ class AnalysisService:
         return self.settings.openrouter_fallback_model or self.settings.openrouter_model
 
     @staticmethod
-    def _log_openrouter_request_error(exc: Exception, attempt: int, model: str) -> None:
+    def _log_openrouter_request_error(
+        exc: Exception,
+        attempt: int,
+        model: str,
+        duration_ms: float,
+    ) -> None:
         if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
-            logger.warning(
-                "OpenRouter request failed on attempt %s using model %s: status=%s error=%s",
-                attempt,
-                model,
-                exc.response.status_code,
-                AnalysisService._openrouter_error_summary(exc.response),
+            log_structured(
+                logger,
+                logging.WARNING,
+                "openrouter_request_failed",
+                attempt=attempt,
+                model=model,
+                status=exc.response.status_code,
+                error=AnalysisService._openrouter_error_summary(exc.response),
+                duration_ms=duration_ms,
             )
             return
 
-        logger.warning(
-            "OpenRouter request failed on attempt %s using model %s: %s",
-            attempt,
-            model,
-            exc.__class__.__name__,
+        log_structured(
+            logger,
+            logging.WARNING,
+            "openrouter_request_failed",
+            attempt=attempt,
+            model=model,
+            error=exc.__class__.__name__,
+            duration_ms=duration_ms,
         )
 
     @staticmethod

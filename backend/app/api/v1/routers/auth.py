@@ -78,7 +78,11 @@ async def request_magic_link(
     guest_id = normalize_guest_id(request.cookies.get(GUEST_ANALYSIS_COOKIE_NAME))
 
     try:
-        result = await auth_service.request_magic_link(body.email, guest_id=guest_id)
+        result = await auth_service.request_magic_link(
+            body.email,
+            guest_id=guest_id,
+            client_ip=get_client_ip(request),
+        )
     except RateLimitExceeded as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -124,6 +128,7 @@ async def verify_magic_link(
         access_token=auth_session.access_token,
         max_age=auth_session.expires_in,
     )
+    request.state.user_id = str(auth_session.user_id)
     return VerifyMagicLinkResponse(
         message="Authenticated.",
         user_id=auth_session.user_id,
@@ -140,3 +145,18 @@ async def logout(
     await auth_service.logout(access_token)
     delete_auth_cookie(response)
     return LogoutResponse(message="Logged out.")
+
+
+def get_client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or None
+
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+
+    if request.client is None:
+        return None
+
+    return request.client.host
