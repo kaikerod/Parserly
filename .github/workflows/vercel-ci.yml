@@ -59,7 +59,7 @@ jobs:
 
       - name: Compile backend
         working-directory: backend
-        run: python -m compileall app api
+        run: python -m compileall app
 
       - name: Validate FastAPI import
         working-directory: backend
@@ -68,7 +68,7 @@ jobs:
           ENVIRONMENT: production
           REDIS_URL: redis://localhost:6379/0
           VERCEL: "1"
-        run: python -c "from app.main import app; print(app.title)"
+        run: python -c "from app.index import app; print(app.title)"
 
       - name: Run backend tests
         working-directory: backend
