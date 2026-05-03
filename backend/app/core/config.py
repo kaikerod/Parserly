@@ -1,7 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -55,37 +54,7 @@ class Settings(BaseSettings):
         elif value.startswith("postgresql://"):
             normalized_url = f"postgresql+asyncpg://{value.removeprefix('postgresql://')}"
 
-        return normalize_asyncpg_ssl_query(normalized_url)
-
-
-def normalize_asyncpg_ssl_query(database_url: str) -> str:
-    parsed_url = urlsplit(database_url)
-    query_items = parse_qsl(parsed_url.query, keep_blank_values=True)
-    normalized_query_items: list[tuple[str, str]] = []
-    ssl_mode: str | None = None
-
-    for key, query_value in query_items:
-        if key == "sslmode":
-            ssl_mode = query_value
-            continue
-        normalized_query_items.append((key, query_value))
-
-    has_asyncpg_ssl = any(key == "ssl" for key, _ in normalized_query_items)
-    if ssl_mode is not None and not has_asyncpg_ssl:
-        normalized_query_items.append(("ssl", ssl_mode))
-
-    if ssl_mode is None:
-        return database_url
-
-    return urlunsplit(
-        (
-            parsed_url.scheme,
-            parsed_url.netloc,
-            parsed_url.path,
-            urlencode(normalized_query_items),
-            parsed_url.fragment,
-        )
-    )
+        return normalized_url
 
 
 @lru_cache
