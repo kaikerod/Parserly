@@ -73,9 +73,9 @@ jobs:
 
           if [ -f backend/alembic.ini ]; then
             cd backend
-            alembic upgrade head
+            python -m alembic upgrade head
           else
-            alembic -c alembic.ini upgrade head
+            python -m alembic -c alembic.ini upgrade head
           fi
 
       - name: Confirm migration skip

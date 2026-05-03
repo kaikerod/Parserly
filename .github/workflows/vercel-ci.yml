@@ -64,6 +64,15 @@ jobs:
         working-directory: backend
         run: python -m compileall app
 
+      - name: Validate Alembic migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://parserly:parserly@localhost:5432/parserly
+          ENVIRONMENT: production
+          REDIS_URL: redis://localhost:6379/0
+          VERCEL: "1"
+        run: python -m alembic upgrade head --sql >/tmp/parserly-alembic.sql
+
       - name: Validate FastAPI import
         working-directory: backend
         env:
