@@ -8,7 +8,7 @@ O **Parserly** é um analisador de currículos focado em compatibilidade com ATS
 - 📊 **Score ATS**: Pontuação de 0 a 100 baseada em critérios reais de recrutamento.
 - 💡 **Sugestões Práticas**: Recomendações específicas para melhorar o conteúdo e formatação.
 - 🔐 **Magic Link**: Login simplificado e seguro via e-mail.
-- 💳 **Paywall Integrado**: Integração com AbacatePay para análise de créditos extras.
+- 💳 **Paywall Integrado**: Integração com Mercado Pago para análise de créditos extras.
 - 🕒 **Histórico**: Acesso rápido a todas as análises anteriores.
 
 ### 🛠️ Stack Tecnológica
@@ -59,7 +59,9 @@ uvicorn app.main:app --reload
 As variáveis essenciais estão no arquivo `.env.example`. Não esqueça de configurar:
 - `OPENROUTER_API_KEY` (Para a IA)
 - `RESEND_API_KEY` (Para os e-mails)
-- `ABACATEPAY_API_KEY` (Para pagamentos)
+- `API_PUBLIC_URL` (URL pública da API usada nos webhooks)
+- `MERCADOPAGO_ACCESS_TOKEN` (Para pagamentos)
+- `MERCADOPAGO_WEBHOOK_SECRET` (Para validação de webhooks)
 
 ---
 
@@ -73,7 +75,7 @@ As variáveis essenciais estão no arquivo `.env.example`. Não esqueça de conf
 - 📊 **ATS Score**: 0 to 100 score based on real recruitment criteria.
 - 💡 **Practical Suggestions**: Specific recommendations to improve content and formatting.
 - 🔐 **Magic Link**: Simplified and secure login via email.
-- 💳 **Integrated Paywall**: Integration with AbacatePay for extra credit analysis.
+- 💳 **Integrated Paywall**: Integration with Mercado Pago for extra credit analysis.
 - 🕒 **History**: Quick access to all previous analyses.
 
 ### 🛠️ Tech Stack
@@ -81,7 +83,7 @@ As variáveis essenciais estão no arquivo `.env.example`. Não esqueça de conf
 - **Backend**: Python 3.12, FastAPI, SQLAlchemy async, Alembic.
 - **Frontend**: Next.js 14 (App Router), Tailwind CSS.
 - **Database**: PostgreSQL 16 & Redis (Cache/Queue).
-- **Services**: OpenRouter (AI), Resend (Email), AbacatePay (Payments).
+- **Services**: OpenRouter (AI), Resend (Email), Mercado Pago (Payments).
 
 ### 🚀 Getting Started
 
@@ -118,7 +120,9 @@ uvicorn app.main:app --reload
 Key variables are listed in `.env.example`. Essential configurations:
 - `OPENROUTER_API_KEY` (For AI)
 - `RESEND_API_KEY` (For Emails)
-- `ABACATEPAY_API_KEY` (For Payments)
+- `API_PUBLIC_URL` (Public API URL used by webhooks)
+- `MERCADOPAGO_ACCESS_TOKEN` (For Payments)
+- `MERCADOPAGO_WEBHOOK_SECRET` (For webhook validation)
 
 ---
 

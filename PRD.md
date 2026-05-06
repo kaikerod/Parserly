@@ -41,7 +41,7 @@ Uma aplicação web que:
 - Identificação/cadastro por e-mail obrigatório após o visitante consumir os 3 usos grátis (sem senha, via Magic Link — ver seção 3.1).
 - Contagem de análises por visitante anônimo e por usuário cadastrado.
 - Integração com OpenRouter para processamento via IA.
-- Paywall ativo após esgotamento da quota gratuita, com checkout via AbacatePay.
+- Paywall ativo após esgotamento da quota gratuita, com checkout via Mercado Pago.
 - Relatório de análise estruturado exibido na interface.
 
 **Excluído do MVP:**
@@ -67,7 +67,7 @@ Uma aplicação web que:
 | **Frontend** | Next.js 14 (App Router) + Tailwind CSS | SSR, rotas de API, DX consistente |
 | **Autenticação** | Magic Link via e-mail (Resend API) | Sem fricção de senha; identifica usuário sem cadastro completo |
 | **IA** | OpenRouter API | Abstração de múltiplos LLMs; fallback de modelo configurável |
-| **Pagamentos** | AbacatePay API | Gateway nacional, PIX nativo |
+| **Pagamentos** | Mercado Pago API | Gateway nacional, PIX nativo |
 | **Infraestrutura** | Docker + Railway (ou Fly.io) | Deploy simplificado para MVP |
 | **Armazenamento de arquivos** | Armazenamento temporário em disco (S3-compatible no pós-MVP) | Arquivos descartados após extração de texto |
 
@@ -89,7 +89,7 @@ Uma aplicação web que:
 │                           │                                  │
 │              ┌────────────┼──────────────┐                   │
 │              ▼            ▼              ▼                   │
-│        [Extrator]   [OpenRouter]   [AbacatePay]              │
+│        [Extrator]   [OpenRouter]   [Mercado Pago]            │
 │        PDF/DOCX      API Client     API Client               │
 └─────────────────────────────────────────────────────────────┘
                       │                   │
@@ -177,7 +177,7 @@ O sistema permite o primeiro uso como visitante e utiliza **Magic Link** para ca
 10. Frontend renderiza relatório (nota, diagnóstico por categoria, recomendações)
 ```
 
-## 3.3 Paywall e Checkout (AbacatePay)
+## 3.3 Paywall e Checkout (Mercado Pago)
 
 ```
 1. Frontend recebe HTTP 402 do backend
@@ -187,13 +187,13 @@ O sistema permite o primeiro uso como visitante e utiliza **Magic Link** para ca
    └── Botão "Pagar e Analisar"
 3. Usuário clica em "Pagar e Analisar"
 4. Frontend chama POST /api/v1/payments/create-charge
-5. Backend cria cobrança na AbacatePay API e retorna:
-   ├── URL de checkout (redirecionamento) ou
-   └── QR Code PIX + código Copia e Cola
+5. Backend cria pagamento PIX no Mercado Pago e retorna:
+   ├── QR Code PIX
+   └── código Copia e Cola
 6. Frontend exibe QR Code PIX ao usuário
-7. AbacatePay envia webhook para POST /api/v1/payments/webhook ao confirmar pagamento
-8. Backend valida assinatura do webhook (HMAC-SHA256)
-9. Backend registra crédito de +1 análise ao usuário no banco
+7. Mercado Pago envia webhook para POST /api/v1/payments/webhook ao alterar o status do pagamento
+8. Backend valida assinatura do webhook (HMAC-SHA256) e consulta `GET /v1/payments/{id}`
+9. Backend registra crédito de +10 análises ao usuário no banco quando `status="approved"`
 10. Backend emite evento via Redis Pub/Sub → Frontend recebe via SSE (Server-Sent Events)
 11. Frontend fecha modal e libera a análise automaticamente
 12. Backend processa análise (retorna ao passo 5 do fluxo 3.2)
@@ -228,7 +228,7 @@ O sistema permite o primeiro uso como visitante e utiliza **Magic Link** para ca
 [Free - Quota Esgotada]
 (análises_usadas: 3)
         │
-(paga via AbacatePay)
+(paga via Mercado Pago)
         │
 (webhook confirmado)
         │
@@ -301,7 +301,7 @@ As histórias estão ordenadas por prioridade para o MVP.
 
 ---
 
-## US-05 — Pagamento via PIX (AbacatePay)
+## US-05 — Pagamento via PIX (Mercado Pago)
 
 **Como** usuário no paywall,
 **quero** pagar por uma análise adicional via PIX,
@@ -471,21 +471,23 @@ def validate_ai_response(raw: dict) -> AnalysisReport:
 - O schema de validação é implementado com Pydantic v2.
 - Respostas com JSON malformado disparam `json.JSONDecodeError`, logado e propagado como `AIResponseError`.
 
-## 5.4 Integração com AbacatePay
+## 5.4 Integração com Mercado Pago
 
 ### 5.4.1 Criação de Cobrança
 
 **Endpoint backend:** `POST /api/v1/payments/create-charge`
 
 **Fluxo:**
-1. Backend chama `POST https://api.abacatepay.com/v1/billing/create` com:
-   - `amount`: valor em centavos (ex: `1990` para R$ 19,90).
-   - `methods`: `["PIX"]`.
-   - `products`: `[{"name": "Análise ATS Avulsa", "quantity": 1, "price": 1990}]`.
-   - `customer.email`: e-mail do usuário autenticado.
-   - `metadata.user_id`: UUID do usuário (para reconciliação no webhook).
-   - `expiresIn`: `1800` (30 minutos em segundos).
-2. Persiste o `billing_id` retornado no banco, associado ao `user_id` e com `status: "pending"`.
+1. Backend chama `POST https://api.mercadopago.com/v1/payments` com:
+   - Header `Authorization: Bearer <MERCADOPAGO_ACCESS_TOKEN>`.
+   - Header `X-Idempotency-Key`: UUID único por cobrança.
+   - `transaction_amount`: valor em reais (ex: `19.90`).
+   - `payment_method_id`: `"pix"`.
+   - `payer.email`: e-mail do usuário autenticado.
+   - `metadata.user_id`: UUID do usuário (para auditoria/reconciliação).
+   - `notification_url`: URL pública de `/api/v1/payments/webhook`.
+   - `date_of_expiration`: 30 minutos após a criação.
+2. Persiste o `payment.id` retornado no banco como `billing_id`, associado ao `user_id` e com `status: "pending"`.
 3. Retorna ao frontend: `{ "pix_qr_code": "...", "pix_copy_paste": "...", "expires_at": "..." }`.
 
 ### 5.4.2 Recebimento e Validação do Webhook
@@ -493,33 +495,36 @@ def validate_ai_response(raw: dict) -> AnalysisReport:
 **Endpoint backend:** `POST /api/v1/payments/webhook`
 
 ```python
-def validate_webhook_signature(payload: bytes, signature: str) -> bool:
+def validate_webhook_signature(signature: str, request_id: str, data_id: str) -> bool:
     """
-    Valida o header X-Abacatepay-Signature usando HMAC-SHA256
-    com a chave ABACATEPAY_WEBHOOK_SECRET definida em variáveis de ambiente.
-    Retorna False se a assinatura não coincidir — nunca lança exceção.
+    Valida o header x-signature do Mercado Pago usando o manifesto:
+    id:{data.id};request-id:{x-request-id};ts:{ts};
+    e a chave MERCADOPAGO_WEBHOOK_SECRET definida em variáveis de ambiente.
     """
+    ts, received = parse_x_signature(signature)
+    manifest = f"id:{data_id};request-id:{request_id};ts:{ts};"
     expected = hmac.new(
-        settings.ABACATEPAY_WEBHOOK_SECRET.encode(),
-        payload,
+        settings.MERCADOPAGO_WEBHOOK_SECRET.encode(),
+        manifest.encode(),
         hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    return hmac.compare_digest(expected, received)
 ```
 
 **Lógica de processamento:**
 
 ```
-1. Receber payload bruto (bytes) antes de deserializar
+1. Obter `data.id` da query string e headers `x-signature` e `x-request-id`
 2. Validar assinatura HMAC → se inválida: retornar HTTP 401 e logar
 3. Deserializar payload JSON
-4. Verificar event type:
-   ├── "billing.paid": incrementar análises disponíveis (+1) no user_id extraído de metadata
-   ├── "billing.expired": atualizar status do billing para "expired" no banco
-   └── outros eventos: logar e retornar HTTP 200 (idempotência)
-5. Atualizar status do billing no banco
-6. Publicar evento "analysis_unlocked:{user_id}" no Redis Pub/Sub
-7. Retornar HTTP 200 imediatamente (AbacatePay exige resposta em < 5s)
+4. Para eventos `payment.*`, consultar `GET /v1/payments/{data.id}` no Mercado Pago
+5. Verificar status do pagamento:
+   ├── "approved": incrementar análises disponíveis (+10) para o usuário do `billing_id`
+   ├── "cancelled" / "rejected" / "expired": atualizar status do billing para "expired"
+   └── outros status: logar e retornar HTTP 200 (idempotência)
+6. Atualizar status do billing no banco
+7. Publicar evento "analysis_unlocked:{user_id}" no Redis Pub/Sub
+8. Retornar HTTP 200/201 ao Mercado Pago quando a notificação for recebida corretamente
 ```
 
 **Idempotência:** Antes de incrementar a quota, verificar se `billing_id` já foi processado. Se sim, retornar HTTP 200 sem efeitos colaterais.
@@ -529,7 +534,7 @@ def validate_webhook_signature(payload: bytes, signature: str) -> bool:
 O frontend mantém uma conexão SSE (Server-Sent Events) com `GET /api/v1/payments/status-stream` após exibir o QR Code. O backend publica o evento via Redis Pub/Sub quando o webhook é confirmado, e o SSE entrega ao cliente:
 
 ```json
-{ "event": "payment_confirmed", "analysis_credits": 1 }
+{ "event": "payment_confirmed", "analysis_credits": 10 }
 ```
 
 ---
@@ -542,7 +547,7 @@ O frontend mantém uma conexão SSE (Server-Sent Events) com `GET /api/v1/paymen
 |---|---|---|
 | Tempo de resposta da análise (P95) | ≤ 30s | Inclui extração + chamada IA |
 | Tempo de resposta da análise (P99) | ≤ 60s | Limite hard do timeout da IA |
-| Confirmação de pagamento (webhook → SSE) | ≤ 3s | Após confirmação da AbacatePay |
+| Confirmação de pagamento (webhook → SSE) | ≤ 3s | Após confirmação do Mercado Pago |
 | Throughput mínimo simultâneo | 20 análises concorrentes | Garantido pela natureza async do FastAPI |
 | Disponibilidade do serviço | 99% uptime | Excluindo janelas de manutenção planejadas |
 
@@ -563,7 +568,7 @@ O frontend mantém uma conexão SSE (Server-Sent Events) com `GET /api/v1/paymen
 
 ### 6.2.3 API Keys e Segredos
 
-- Todas as chaves de API (`OPENROUTER_API_KEY`, `ABACATEPAY_API_KEY`, `ABACATEPAY_WEBHOOK_SECRET`) são carregadas exclusivamente via variáveis de ambiente.
+- Todas as chaves de API (`OPENROUTER_API_KEY`, `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET`) são carregadas exclusivamente via variáveis de ambiente.
 - Nenhuma chave deve aparecer em logs, rastreamentos de erro ou respostas de API.
 
 ### 6.2.4 Validação de Input
@@ -579,7 +584,7 @@ O frontend mantém uma conexão SSE (Server-Sent Events) com `GET /api/v1/paymen
 | `POST /auth/request-link` | 3 req / 10 min por IP e por e-mail |
 | `POST /analysis` | 10 req / hora por `user_id` |
 | `POST /payments/create-charge` | 5 req / hora por `user_id` |
-| `POST /payments/webhook` | Sem rate limit (IP da AbacatePay whitelistado) |
+| `POST /payments/webhook` | Sem rate limit (IP do Mercado Pago whitelistado, quando aplicável) |
 
 ## 6.3 Privacidade de Dados
 
@@ -643,9 +648,9 @@ O frontend mantém uma conexão SSE (Server-Sent Events) com `GET /api/v1/paymen
 
 ---
 
-## EC-03 — Webhook do AbacatePay Recebido em Duplicidade
+## EC-03 — Webhook do Mercado Pago Recebido em Duplicidade
 
-**Cenário:** O AbacatePay reenvia o mesmo evento de pagamento confirmado (comportamento esperado em sistemas de pagamento por garantia de entrega).
+**Cenário:** O Mercado Pago reenvia o mesmo evento de pagamento confirmado (comportamento esperado em sistemas de pagamento por garantia de entrega).
 
 **Comportamento esperado:**
 
@@ -654,7 +659,7 @@ O frontend mantém uma conexão SSE (Server-Sent Events) com `GET /api/v1/paymen
 2. Antes de processar: consulta tabela payments WHERE billing_id = X AND status = 'paid'
 3. Se registro encontrado:
    a. NÃO incrementar analyses_used novamente
-   b. Retornar HTTP 200 imediatamente (sinaliza ao AbacatePay que o evento foi recebido)
+   b. Retornar HTTP 200 imediatamente (sinaliza ao Mercado Pago que o evento foi recebido)
    c. Logar warning: "Duplicate webhook received for billing_id: X"
 4. Se registro NÃO encontrado: processar normalmente (ver seção 5.4.2)
 ```
@@ -748,7 +753,7 @@ CREATE TABLE analyses (
 CREATE TABLE payments (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    billing_id      VARCHAR(255) UNIQUE NOT NULL,  -- ID retornado pela AbacatePay
+    billing_id      VARCHAR(255) UNIQUE NOT NULL,  -- payment.id retornado pelo Mercado Pago
     amount_cents    INTEGER NOT NULL,
     status          VARCHAR(50) NOT NULL DEFAULT 'pending',  -- pending | paid | expired | refunded
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -768,6 +773,7 @@ CREATE INDEX idx_payments_user_status ON payments(user_id, status);
 ```bash
 # Aplicação
 APP_URL=https://atsanalyzer.com.br
+API_PUBLIC_URL=https://api.atsanalyzer.com.br
 SECRET_KEY=<string aleatória 64 chars>
 ENVIRONMENT=production
 
@@ -786,9 +792,10 @@ OPENROUTER_API_KEY=sk-or-...
 OPENROUTER_MODEL=google/gemma-4-26b-a4b-it:free
 OPENROUTER_FALLBACK_MODEL=google/gemma-4-26b-a4b-it:free
 
-# AbacatePay
-ABACATEPAY_API_KEY=...
-ABACATEPAY_WEBHOOK_SECRET=...
+# Mercado Pago
+MERCADOPAGO_ACCESS_TOKEN=...
+MERCADOPAGO_API_URL=https://api.mercadopago.com
+MERCADOPAGO_WEBHOOK_SECRET=...
 ANALYSIS_PRICE_CENTS=1990
 ```
 

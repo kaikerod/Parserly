@@ -4,9 +4,11 @@ import asyncio
 import hashlib
 import hmac
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 
 from app.core.config import Settings
@@ -16,6 +18,7 @@ from app.api.v1.routers.analysis import reserve_guest_analysis
 from app.services.auth_service import AuthService, InvalidMagicLinkToken, MagicLinkPayload
 from app.services.payment_service import (
     InvalidWebhookPayload,
+    PaymentCharge,
     PaymentService,
     WebhookProcessResult,
 )
@@ -139,30 +142,97 @@ def test_magic_link_requires_payment_when_payload_marks_exhausted_guest() -> Non
     assert session.requires_payment is True
 
 
-def test_webhook_signature_accepts_plain_and_prefixed_hmac() -> None:
+def test_mercadopago_webhook_signature_uses_manifest_headers() -> None:
     service = PaymentService(
         db_session=object(),  # type: ignore[arg-type]
         redis_client=object(),  # type: ignore[arg-type]
-        settings=Settings(abacatepay_webhook_secret="webhook-secret"),
+        settings=Settings(mercadopago_webhook_secret="webhook-secret"),
     )
-    payload = b'{"event":"billing.paid","data":{"billingId":"bill_123"}}'
-    digest = hmac.new(b"webhook-secret", payload, hashlib.sha256).hexdigest()
+    data_id = "123456"
+    request_id = "bb56a2f1-6aae-46ac-982e-9dcd3581d08e"
+    timestamp = "1742505638683"
+    manifest = f"id:{data_id};request-id:{request_id};ts:{timestamp};"
+    digest = hmac.new(b"webhook-secret", manifest.encode("utf-8"), hashlib.sha256).hexdigest()
+    signature = f"ts={timestamp},v1={digest}"
 
-    assert service.validate_webhook_signature(payload, digest)
-    assert service.validate_webhook_signature(payload, f"sha256={digest}")
-    assert not service.validate_webhook_signature(payload, "invalid")
-    assert not service.validate_webhook_signature(payload, None)
+    assert service.validate_webhook_signature(signature, request_id, data_id)
+    assert not service.validate_webhook_signature(signature, "other-request", data_id)
+    assert not service.validate_webhook_signature("invalid", request_id, data_id)
+    assert not service.validate_webhook_signature(signature, request_id, None)
+
+
+def test_mercadopago_charge_response_extracts_pix_qr_code() -> None:
+    service = PaymentService(
+        db_session=object(),  # type: ignore[arg-type]
+        redis_client=object(),  # type: ignore[arg-type]
+        settings=Settings(analysis_price_cents=1990),
+    )
+    response = httpx.Response(
+        201,
+        json={
+            "id": 123456,
+            "date_of_expiration": "2026-05-03T15:30:00Z",
+            "point_of_interaction": {
+                "transaction_data": {
+                    "qr_code": "000201PIX",
+                    "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgAAA",
+                }
+            },
+        },
+    )
+
+    charge = service._parse_charge_response(response)
+
+    assert isinstance(charge, PaymentCharge)
+    assert charge.billing_id == "123456"
+    assert charge.pix_copy_paste == "000201PIX"
+    assert charge.pix_qr_code == "iVBORw0KGgoAAAANSUhEUgAAA"
+    assert charge.amount_cents == 1990
+
+
+def test_mercadopago_expiration_uses_required_date_format() -> None:
+    expires_at = datetime(2026, 5, 3, 15, 30, 0, tzinfo=UTC)
+
+    formatted = PaymentService._format_mercadopago_datetime(expires_at)
+
+    assert formatted == "2026-05-03T15:30:00.000+00:00"
+
+
+def test_mercadopago_webhook_url_skips_local_development_urls() -> None:
+    service = PaymentService(
+        db_session=object(),  # type: ignore[arg-type]
+        redis_client=object(),  # type: ignore[arg-type]
+        settings=Settings(api_public_url="http://localhost:3001"),
+    )
+
+    assert service._mercadopago_webhook_url() is None
+
+
+def test_mercadopago_webhook_url_uses_public_https_url() -> None:
+    service = PaymentService(
+        db_session=object(),  # type: ignore[arg-type]
+        redis_client=object(),  # type: ignore[arg-type]
+        settings=Settings(api_public_url="https://api.parserly.com.br/"),
+    )
+
+    assert service._mercadopago_webhook_url() == (
+        "https://api.parserly.com.br/api/v1/payments/webhook"
+    )
 
 
 class RecordingPaymentService(PaymentService):
-    def __init__(self, status: str) -> None:
+    def __init__(self, status: str, payment_payload: dict[str, object] | None = None) -> None:
         self.calls: list[tuple[str, str, UUID | None]] = []
         self.status = status
+        self.payment_payload = payment_payload
         super().__init__(
             db_session=object(),  # type: ignore[arg-type]
             redis_client=object(),  # type: ignore[arg-type]
             settings=Settings(),
         )
+
+    async def _fetch_mercadopago_payment(self, payment_id: str) -> dict[str, object] | None:
+        return self.payment_payload or {"id": payment_id, "status": "approved", "metadata": {}}
 
     async def _process_paid_event(
         self,
@@ -179,38 +249,48 @@ class RecordingPaymentService(PaymentService):
 
 def test_payment_webhook_routes_paid_duplicate_event_idempotently() -> None:
     user_id = uuid4()
-    service = RecordingPaymentService(status="duplicate")
-    payload = {
-        "event": "billing.paid",
-        "data": {
-            "billingId": "bill_123",
+    service = RecordingPaymentService(
+        status="duplicate",
+        payment_payload={
+            "id": "123456",
+            "status": "approved",
             "metadata": {"user_id": str(user_id)},
+        },
+    )
+    payload = {
+        "action": "payment.updated",
+        "type": "payment",
+        "data": {
+            "id": "123456",
         },
     }
 
     result = asyncio.run(service.process_webhook(json.dumps(payload).encode("utf-8")))
 
     assert result.status == "duplicate"
-    assert service.calls == [("paid", "bill_123", user_id)]
+    assert service.calls == [("paid", "123456", user_id)]
 
 
 def test_payment_webhook_routes_expired_event() -> None:
-    service = RecordingPaymentService(status="expired")
-    payload = {"event": "billing.expired", "data": {"id": "bill_123"}}
+    service = RecordingPaymentService(
+        status="expired",
+        payment_payload={"id": "123456", "status": "cancelled", "metadata": {}},
+    )
+    payload = {"action": "payment.updated", "type": "payment", "data": {"id": "123456"}}
 
     result = asyncio.run(service.process_webhook(json.dumps(payload).encode("utf-8")))
 
     assert result.status == "expired"
-    assert service.calls == [("expired", "bill_123", None)]
+    assert service.calls == [("expired", "123456", None)]
 
 
-def test_payment_webhook_rejects_invalid_payload_and_ignores_missing_billing_id() -> None:
+def test_payment_webhook_rejects_invalid_payload_and_ignores_missing_payment_id() -> None:
     service = RecordingPaymentService(status="processed")
 
     with pytest.raises(InvalidWebhookPayload):
         asyncio.run(service.process_webhook(b"{not-json"))
 
-    result = asyncio.run(service.process_webhook(b'{"event":"billing.paid","data":{}}'))
+    result = asyncio.run(service.process_webhook(b'{"action":"payment.updated","data":{}}'))
 
     assert result.status == "ignored"
     assert service.calls == []

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from urllib.parse import urlparse
+from uuid import UUID, uuid4
 
 import httpx
 from redis.asyncio import Redis
@@ -22,11 +24,19 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-ABACATEPAY_PIX_EXPIRATION_SECONDS = 30 * 60
+MERCADOPAGO_PIX_EXPIRATION_SECONDS = 30 * 60
 PAID_ANALYSIS_CREDITS = 10
 CREATE_CHARGE_RATE_LIMIT_SECONDS = 60 * 60
 CREATE_CHARGE_RATE_LIMIT_MAX_REQUESTS = 5
-ABACATEPAY_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=10.0, pool=5.0)
+MERCADOPAGO_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=10.0, pool=5.0)
+MERCADOPAGO_FINAL_UNPAID_STATUSES = {
+    "cancelled",
+    "canceled",
+    "charged_back",
+    "expired",
+    "refunded",
+    "rejected",
+}
 
 _RATE_LIMIT_SCRIPT = """
 local current = tonumber(redis.call("GET", KEYS[1]) or "0")
@@ -106,7 +116,7 @@ class PaymentService:
         await self._enforce_create_charge_rate_limit(user.id)
 
         try:
-            provider_charge = await self._create_abacatepay_pix(user)
+            provider_charge = await self._create_mercadopago_pix(user)
         except PaymentProviderUnavailable:
             await self._release_create_charge_rate_limit(user.id)
             raise
@@ -126,7 +136,7 @@ class PaymentService:
             log_structured(
                 logger,
                 logging.WARNING,
-                "abacatepay_duplicate_billing_id",
+                "mercadopago_duplicate_payment_id",
                 billing_id=provider_charge.billing_id,
             )
             raise PaymentProviderUnavailable from exc
@@ -136,25 +146,37 @@ class PaymentService:
 
         return provider_charge
 
-    def validate_webhook_signature(self, payload: bytes, signature: str | None) -> bool:
-        secret = self.settings.abacatepay_webhook_secret
-        if not secret or not signature:
+    def validate_webhook_signature(
+        self,
+        signature: str | None,
+        request_id: str | None,
+        data_id: str | None,
+    ) -> bool:
+        secret = self.settings.mercadopago_webhook_secret
+        if not secret or not signature or not request_id or not data_id:
             return False
 
+        signature_parts = self._parse_mercadopago_signature(signature)
+        timestamp = signature_parts.get("ts")
+        received_hash = signature_parts.get("v1")
+        if not timestamp or not received_hash:
+            return False
+
+        manifest = f"id:{data_id};request-id:{request_id};ts:{timestamp};"
         expected = hmac.new(
             secret.encode("utf-8"),
-            payload,
+            manifest.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
-        received = signature.strip()
-        received_without_prefix = received.removeprefix("sha256=").strip()
 
-        return hmac.compare_digest(expected, received_without_prefix) or hmac.compare_digest(
-            f"sha256={expected}",
-            received,
-        )
+        return hmac.compare_digest(expected, received_hash)
 
-    async def process_webhook(self, payload: bytes) -> WebhookProcessResult:
+    async def process_webhook(
+        self,
+        payload: bytes,
+        *,
+        data_id: str | None = None,
+    ) -> WebhookProcessResult:
         try:
             event_payload = json.loads(payload)
         except json.JSONDecodeError as exc:
@@ -163,56 +185,87 @@ class PaymentService:
         if not isinstance(event_payload, dict):
             raise InvalidWebhookPayload
 
-        event_type = self._extract_event_type(event_payload)
-        billing_id = self._extract_billing_id(event_payload)
-        if billing_id is None:
-            log_structured(logger, logging.WARNING, "abacatepay_webhook_missing_billing_id")
+        payment_id = self._extract_payment_id(event_payload, data_id)
+        if payment_id is None:
+            log_structured(logger, logging.WARNING, "mercadopago_webhook_missing_payment_id")
             return WebhookProcessResult(status="ignored")
 
-        if event_type in {"billing.paid", "transparent.completed", "checkout.completed"}:
-            user_id = self._extract_user_id(event_payload)
-            return await self._process_paid_event(billing_id, user_id)
+        event_type = self._extract_event_type(event_payload)
+        if not self._is_mercadopago_payment_event(event_payload, event_type):
+            log_structured(
+                logger,
+                logging.INFO,
+                "mercadopago_webhook_ignored_event",
+                event_type=event_type,
+                billing_id=payment_id,
+            )
+            return WebhookProcessResult(status="ignored", billing_id=payment_id)
 
-        if event_type in {"billing.expired", "transparent.lost", "checkout.lost"}:
-            return await self._process_expired_event(billing_id)
+        payment_payload = await self._fetch_mercadopago_payment(payment_id)
+        if payment_payload is None:
+            return WebhookProcessResult(status="ignored", billing_id=payment_id)
+
+        payment_status = self._extract_payment_status(payment_payload)
+        if payment_status == "approved":
+            user_id = self._extract_user_id(payment_payload)
+            return await self._process_paid_event(payment_id, user_id)
+
+        if payment_status in MERCADOPAGO_FINAL_UNPAID_STATUSES:
+            return await self._process_expired_event(payment_id)
 
         log_structured(
             logger,
             logging.INFO,
-            "abacatepay_webhook_ignored_event",
+            "mercadopago_webhook_ignored_payment_status",
             event_type=event_type,
-            billing_id=billing_id,
+            billing_id=payment_id,
+            payment_status=payment_status,
         )
-        return WebhookProcessResult(status="ignored", billing_id=billing_id)
+        return WebhookProcessResult(status="ignored", billing_id=payment_id)
 
-    async def _create_abacatepay_pix(self, user: User) -> PaymentCharge:
-        if not self.settings.abacatepay_api_key:
-            raise PaymentProviderUnavailable("A chave da AbacatePay nao esta configurada.")
+    async def _create_mercadopago_pix(self, user: User) -> PaymentCharge:
+        if not self.settings.mercadopago_access_token:
+            raise PaymentProviderUnavailable("O access token do Mercado Pago nao esta configurado.")
 
+        expires_at = datetime.now(UTC) + timedelta(seconds=MERCADOPAGO_PIX_EXPIRATION_SECONDS)
+        idempotency_key = f"parserly-{uuid4()}"
         payload = {
-            "method": "PIX",
-            "data": {
-                "amount": self.settings.analysis_price_cents,
-                "description": f"Pacote Parserly - {PAID_ANALYSIS_CREDITS} analises ATS",
-                "expiresIn": ABACATEPAY_PIX_EXPIRATION_SECONDS,
+            "transaction_amount": self._analysis_price_reais(),
+            "description": f"Pacote Parserly - {PAID_ANALYSIS_CREDITS} analises ATS",
+            "payment_method_id": "pix",
+            "payer": {
+                "email": user.email,
+            },
+            "external_reference": idempotency_key,
+            "date_of_expiration": self._format_mercadopago_datetime(expires_at),
+            "metadata": {
+                "user_id": str(user.id),
+                "analysis_credits": PAID_ANALYSIS_CREDITS,
             },
         }
+        notification_url = self._mercadopago_webhook_url()
+        if notification_url is not None:
+            payload["notification_url"] = notification_url
 
-        async with httpx.AsyncClient(timeout=ABACATEPAY_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=MERCADOPAGO_TIMEOUT) as client:
             try:
                 response = await client.post(
-                    self._abacatepay_url("/transparents/create"),
-                    headers=self._abacatepay_headers(),
+                    self._mercadopago_url("/v1/payments"),
+                    headers=self._mercadopago_headers(idempotency_key=idempotency_key),
                     json=payload,
                 )
                 response.raise_for_status()
             except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
-                self._log_abacatepay_request_error(exc)
-                raise PaymentProviderUnavailable(self._abacatepay_user_message(exc)) from exc
+                self._log_mercadopago_request_error("create_charge", exc)
+                raise PaymentProviderUnavailable(self._mercadopago_user_message(exc)) from exc
 
-        return self._parse_charge_response(response)
+        return self._parse_charge_response(response, expires_at)
 
-    def _parse_charge_response(self, response: httpx.Response) -> PaymentCharge:
+    def _parse_charge_response(
+        self,
+        response: httpx.Response,
+        expires_at_fallback: datetime | None = None,
+    ) -> PaymentCharge:
         try:
             payload = response.json()
         except json.JSONDecodeError as exc:
@@ -220,67 +273,71 @@ class PaymentService:
 
         if not isinstance(payload, dict):
             raise PaymentProviderUnavailable
-        if payload.get("success") is False:
-            raise PaymentProviderUnavailable
 
-        data = payload.get("data", payload)
-        if not isinstance(data, dict):
-            raise PaymentProviderUnavailable
+        billing_id = self._first_value(payload, ("id",))
+        transaction_data = self._first_value(payload, ("point_of_interaction", "transaction_data"))
+        if not isinstance(transaction_data, dict):
+            transaction_data = {}
 
-        billing_id = self._first_value(
-            data,
-            ("id",),
-            ("billingId",),
-            ("billing_id",),
-            ("pixQrCode", "id"),
-            ("pix", "id"),
-        )
-        pix_copy_paste = self._first_value(
-            data,
-            ("brCode",),
-            ("pixCopyPaste",),
-            ("pix_copy_paste",),
-            ("copyPaste",),
-            ("pix", "brCode"),
-        )
-        pix_qr_code = self._first_value(
-            data,
-            ("brCodeBase64",),
-            ("pixQrCode",),
-            ("pix_qr_code",),
-            ("qrCode",),
-            ("pix", "brCodeBase64"),
-        )
-        expires_at_raw = self._first_value(
-            data,
-            ("expiresAt",),
-            ("expires_at",),
-            ("expirationDate",),
-            ("pix", "expiresAt"),
-        )
+        pix_copy_paste = self._first_value(transaction_data, ("qr_code",))
+        pix_qr_code = self._first_value(transaction_data, ("qr_code_base64",))
+        expires_at_raw = self._first_value(payload, ("date_of_expiration",))
 
         if not billing_id or not pix_copy_paste or not pix_qr_code:
             log_structured(
                 logger,
                 logging.WARNING,
-                "abacatepay_charge_response_invalid",
+                "mercadopago_charge_response_invalid",
                 has_billing_id=bool(billing_id),
                 has_pix_copy_paste=bool(pix_copy_paste),
                 has_pix_qr_code=bool(pix_qr_code),
-                response=self._abacatepay_response_summary(response),
+                response=self._mercadopago_response_summary(response),
             )
             raise PaymentProviderUnavailable
 
-        expires_at = self._parse_expires_at(expires_at_raw)
+        expires_at = self._parse_expires_at(expires_at_raw, expires_at_fallback)
         return PaymentCharge(
             billing_id=str(billing_id),
             pix_qr_code=str(pix_qr_code),
             pix_copy_paste=str(pix_copy_paste),
             expires_at=expires_at,
-            expires_in=ABACATEPAY_PIX_EXPIRATION_SECONDS,
+            expires_in=MERCADOPAGO_PIX_EXPIRATION_SECONDS,
             amount_cents=self.settings.analysis_price_cents,
             analysis_credits=PAID_ANALYSIS_CREDITS,
         )
+
+    async def _fetch_mercadopago_payment(self, payment_id: str) -> dict[str, Any] | None:
+        if not self.settings.mercadopago_access_token:
+            raise PaymentProviderUnavailable("O access token do Mercado Pago nao esta configurado.")
+
+        async with httpx.AsyncClient(timeout=MERCADOPAGO_TIMEOUT) as client:
+            try:
+                response = await client.get(
+                    self._mercadopago_url(f"/v1/payments/{payment_id}"),
+                    headers=self._mercadopago_headers(),
+                )
+                if response.status_code == 404:
+                    log_structured(
+                        logger,
+                        logging.WARNING,
+                        "mercadopago_payment_not_found",
+                        billing_id=payment_id,
+                    )
+                    return None
+                response.raise_for_status()
+            except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
+                self._log_mercadopago_request_error("fetch_payment", exc)
+                raise PaymentProviderUnavailable from exc
+
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:
+            raise PaymentProviderUnavailable from exc
+
+        if not isinstance(payload, dict):
+            raise PaymentProviderUnavailable
+
+        return payload
 
     async def _process_paid_event(
         self,
@@ -301,7 +358,7 @@ class PaymentService:
                 log_structured(
                     logger,
                     logging.WARNING,
-                    "abacatepay_webhook_duplicate",
+                    "mercadopago_webhook_duplicate",
                     billing_id=billing_id,
                     status="paid",
                 )
@@ -311,7 +368,7 @@ class PaymentService:
             log_structured(
                 logger,
                 logging.WARNING,
-                "abacatepay_webhook_unknown_billing_id",
+                "mercadopago_webhook_unknown_payment_id",
                 billing_id=billing_id,
                 event_status="paid",
             )
@@ -322,7 +379,7 @@ class PaymentService:
             log_structured(
                 logger,
                 logging.WARNING,
-                "abacatepay_webhook_user_mismatch",
+                "mercadopago_webhook_user_mismatch",
                 billing_id=billing_id,
             )
 
@@ -416,53 +473,117 @@ class PaymentService:
         )
         return result.scalar_one_or_none()
 
-    def _abacatepay_url(self, path: str) -> str:
-        return f"{self.settings.abacatepay_api_url.rstrip('/')}/{path.lstrip('/')}"
+    def _mercadopago_url(self, path: str) -> str:
+        return f"{self.settings.mercadopago_api_url.rstrip('/')}/{path.lstrip('/')}"
 
-    def _abacatepay_headers(self) -> dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self.settings.abacatepay_api_key}",
+    def _mercadopago_headers(self, *, idempotency_key: str | None = None) -> dict[str, str]:
+        headers = {
+            "Authorization": f"Bearer {self.settings.mercadopago_access_token}",
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
+        if idempotency_key:
+            headers["X-Idempotency-Key"] = idempotency_key
+        return headers
+
+    def _mercadopago_webhook_url(self) -> str | None:
+        notification_url = f"{self.settings.api_public_url.rstrip('/')}/api/v1/payments/webhook"
+        if not self._is_valid_mercadopago_notification_url(notification_url):
+            return None
+
+        return notification_url
 
     @staticmethod
-    def _log_abacatepay_request_error(exc: Exception) -> None:
+    def _is_valid_mercadopago_notification_url(value: str) -> bool:
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.netloc or not parsed.hostname:
+            return False
+
+        hostname = parsed.hostname.lower()
+        if hostname == "localhost" or hostname.endswith(".localhost") or hostname.endswith(".local"):
+            return False
+
+        try:
+            host_ip = ipaddress.ip_address(hostname)
+        except ValueError:
+            return True
+
+        return not (
+            host_ip.is_loopback
+            or host_ip.is_private
+            or host_ip.is_link_local
+            or host_ip.is_reserved
+            or host_ip.is_unspecified
+        )
+
+    def _analysis_price_reais(self) -> float:
+        return round(self.settings.analysis_price_cents / 100, 2)
+
+    @staticmethod
+    def _parse_mercadopago_signature(signature: str) -> dict[str, str]:
+        parts: dict[str, str] = {}
+        for raw_part in signature.split(","):
+            key_value = raw_part.split("=", 1)
+            if len(key_value) != 2:
+                continue
+            key, value = key_value
+            parts[key.strip()] = value.strip()
+        return parts
+
+    @staticmethod
+    def _is_mercadopago_payment_event(
+        payload: dict[str, Any],
+        event_type: str | None,
+    ) -> bool:
+        candidates = [
+            event_type,
+            PaymentService._first_value(payload, ("type",)),
+            PaymentService._first_value(payload, ("topic",)),
+            PaymentService._first_value(payload, ("event",)),
+        ]
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            normalized_event_type = str(candidate).lower()
+            if normalized_event_type == "payment" or normalized_event_type.startswith("payment."):
+                return True
+        return False
+
+    @staticmethod
+    def _log_mercadopago_request_error(action: str, exc: Exception) -> None:
         if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
             log_structured(
                 logger,
                 logging.WARNING,
-                "abacatepay_create_charge_failed",
+                "mercadopago_request_failed",
+                action=action,
                 status=exc.response.status_code,
-                response=PaymentService._abacatepay_response_summary(exc.response),
+                response=PaymentService._mercadopago_response_summary(exc.response),
             )
             return
 
         log_structured(
             logger,
             logging.WARNING,
-            "abacatepay_create_charge_failed",
+            "mercadopago_request_failed",
+            action=action,
             error=exc.__class__.__name__,
         )
 
     @staticmethod
-    def _abacatepay_user_message(exc: Exception) -> str:
+    def _mercadopago_user_message(exc: Exception) -> str:
         if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
-            provider_error = PaymentService._abacatepay_error_value(exc.response)
-            if exc.response.status_code == 401 and provider_error == "Insufficient permissions":
-                return (
-                    "A chave da AbacatePay nao tem permissao para criar checkout "
-                    "transparente PIX. Gere uma chave com permissao CHECKOUT:READ."
-                )
-            if exc.response.status_code == 401 and provider_error == "API key version mismatch":
-                return "A chave da AbacatePay nao e compativel com esta versao da API."
-            if exc.response.status_code == 401 and provider_error == "Invalid or inactive API key":
-                return "A chave da AbacatePay e invalida ou esta inativa."
+            if exc.response.status_code in {401, 403}:
+                return "O access token do Mercado Pago e invalido ou nao tem permissao."
+
+            provider_error = PaymentService._mercadopago_error_value(exc.response)
+            if provider_error:
+                return f"Mercado Pago recusou a cobranca PIX: {provider_error}"
 
         return "Nao foi possivel gerar a cobranca PIX no momento."
 
     @staticmethod
-    def _abacatepay_error_value(response: httpx.Response) -> str | None:
+    def _mercadopago_error_value(response: httpx.Response) -> str | None:
         try:
             payload = response.json()
         except json.JSONDecodeError:
@@ -471,11 +592,24 @@ class PaymentService:
         if not isinstance(payload, dict):
             return None
 
+        message = payload.get("message")
+        if isinstance(message, str) and message.strip():
+            return message
+
         error = payload.get("error")
-        return error if isinstance(error, str) else None
+        if isinstance(error, str) and error.strip():
+            return error
+
+        cause = payload.get("cause")
+        if isinstance(cause, list):
+            for item in cause:
+                if isinstance(item, dict) and isinstance(item.get("description"), str):
+                    return item["description"]
+
+        return None
 
     @staticmethod
-    def _abacatepay_response_summary(response: httpx.Response) -> str:
+    def _mercadopago_response_summary(response: httpx.Response) -> str:
         try:
             payload = response.json()
         except json.JSONDecodeError:
@@ -485,58 +619,65 @@ class PaymentService:
             return str(payload)[:240]
 
         summary: dict[str, Any] = {}
-        for key in ("success", "error", "message"):
+        for key in ("error", "message", "status", "status_detail"):
             if key in payload:
                 summary[key] = payload[key]
 
-        data = payload.get("data")
-        if isinstance(data, dict):
-            for key in ("status", "message", "error"):
-                if key in data:
-                    summary[f"data.{key}"] = data[key]
+        cause = payload.get("cause")
+        if isinstance(cause, list):
+            summary["cause_count"] = len(cause)
+            first_cause = cause[0] if cause else None
+            if isinstance(first_cause, dict):
+                for key in ("code", "description"):
+                    if key in first_cause:
+                        summary[f"cause.0.{key}"] = first_cause[key]
 
         return json.dumps(summary or payload, ensure_ascii=True)[:500]
 
     @staticmethod
     def _extract_event_type(payload: dict[str, Any]) -> str | None:
-        return PaymentService._first_value(
+        value = PaymentService._first_value(
             payload,
+            ("action",),
+            ("type",),
+            ("topic",),
             ("event",),
             ("event_type",),
-            ("type",),
-            ("name",),
             ("data", "event"),
         )
+        return str(value) if value is not None else None
 
     @staticmethod
-    def _extract_billing_id(payload: dict[str, Any]) -> str | None:
+    def _extract_payment_id(
+        payload: dict[str, Any],
+        fallback_payment_id: str | None,
+    ) -> str | None:
+        if fallback_payment_id:
+            return str(fallback_payment_id)
+
         value = PaymentService._first_value(
             payload,
             ("data", "id"),
-            ("data", "billingId"),
-            ("data", "billing_id"),
-            ("data", "billing", "id"),
-            ("data", "pix", "id"),
-            ("billing", "id"),
             ("payment", "id"),
-            ("pix", "id"),
-            ("billing_id",),
-            ("billingId",),
+            ("resource",),
         )
         if value is None:
             return None
-        return str(value)
+
+        payment_id = str(value)
+        if "/" in payment_id:
+            payment_id = payment_id.rstrip("/").rsplit("/", 1)[-1]
+
+        return payment_id or None
+
+    @staticmethod
+    def _extract_payment_status(payload: dict[str, Any]) -> str | None:
+        value = PaymentService._first_value(payload, ("status",))
+        return str(value).lower() if value is not None else None
 
     @staticmethod
     def _extract_user_id(payload: dict[str, Any]) -> UUID | None:
-        metadata = PaymentService._first_value(
-            payload,
-            ("data", "metadata"),
-            ("data", "billing", "metadata"),
-            ("data", "pix", "metadata"),
-            ("billing", "metadata"),
-            ("metadata",),
-        )
+        metadata = PaymentService._first_value(payload, ("metadata",))
         if not isinstance(metadata, dict):
             return None
 
@@ -563,7 +704,10 @@ class PaymentService:
         return None
 
     @staticmethod
-    def _parse_expires_at(value: Any) -> datetime:
+    def _parse_expires_at(
+        value: Any,
+        fallback: datetime | None = None,
+    ) -> datetime:
         if isinstance(value, str):
             try:
                 parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -574,7 +718,17 @@ class PaymentService:
                     return parsed.replace(tzinfo=UTC)
                 return parsed
 
-        return datetime.now(UTC) + timedelta(seconds=ABACATEPAY_PIX_EXPIRATION_SECONDS)
+        if fallback is not None:
+            return fallback
+
+        return datetime.now(UTC) + timedelta(seconds=MERCADOPAGO_PIX_EXPIRATION_SECONDS)
+
+    @staticmethod
+    def _format_mercadopago_datetime(value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+
+        return value.isoformat(timespec="milliseconds")
 
     @staticmethod
     def _create_charge_rate_limit_key(user_id: UUID) -> str:

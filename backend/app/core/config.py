@@ -24,14 +24,15 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://user:pass@localhost:5432/ats_db"
     redis_url: str = "redis://localhost:6379/0"
+    api_public_url: str = "http://localhost:8000"
 
     openrouter_api_key: str = ""
     openrouter_model: str = DEFAULT_OPENROUTER_MODEL
     openrouter_fallback_model: str = DEFAULT_OPENROUTER_FALLBACK_MODEL
 
-    abacatepay_api_key: str = ""
-    abacatepay_api_url: str = "https://api.abacatepay.com/v2"
-    abacatepay_webhook_secret: str = ""
+    mercadopago_access_token: str = ""
+    mercadopago_api_url: str = "https://api.mercadopago.com"
+    mercadopago_webhook_secret: str = ""
     analysis_price_cents: int = 1990
 
     resend_api_key: str = ""

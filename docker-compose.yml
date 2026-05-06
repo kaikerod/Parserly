@@ -44,6 +44,7 @@ services:
         condition: service_healthy
     environment:
       APP_URL: ${APP_URL:-http://localhost:3000}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8000}
       SECRET_KEY: ${SECRET_KEY:-change-me-only-for-local-development}
       ENVIRONMENT: ${ENVIRONMENT:-production}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-parserly}:${POSTGRES_PASSWORD:-parserly}@db:5432/${POSTGRES_DB:-parserly}
@@ -53,9 +54,9 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
       OPENROUTER_FALLBACK_MODEL: ${OPENROUTER_FALLBACK_MODEL:-google/gemma-4-26b-a4b-it:free}
-      ABACATEPAY_API_KEY: ${ABACATEPAY_API_KEY:-}
-      ABACATEPAY_API_URL: ${ABACATEPAY_API_URL:-https://api.abacatepay.com/v2}
-      ABACATEPAY_WEBHOOK_SECRET: ${ABACATEPAY_WEBHOOK_SECRET:-}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
+      MERCADOPAGO_API_URL: ${MERCADOPAGO_API_URL:-https://api.mercadopago.com}
+      MERCADOPAGO_WEBHOOK_SECRET: ${MERCADOPAGO_WEBHOOK_SECRET:-}
       ANALYSIS_PRICE_CENTS: ${ANALYSIS_PRICE_CENTS:-1990}
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-access_token}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}

@@ -65,7 +65,7 @@ const NAVIGATION_DETAILS = [
     label: "Pagamento",
     title: "Análises extras com checkout via PIX",
     description:
-      "Use as análises gratuitas e, ao atingir o limite, libere novas avaliações pelo fluxo de pagamento seguro integrado ao AbacatePay.",
+      "Use as análises gratuitas e, ao atingir o limite, libere novas avaliações pelo fluxo de pagamento seguro integrado ao Mercado Pago.",
     icon: CreditCard
   },
   {

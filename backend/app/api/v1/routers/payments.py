@@ -126,24 +126,34 @@ async def payment_status_stream(
 
 
 @router.post("/webhook", response_model=WebhookResponse)
-async def abacatepay_webhook(
+async def mercadopago_webhook(
     request: Request,
     payment_service: Annotated[PaymentService, Depends(get_payment_service)],
-    signature: Annotated[str | None, Header(alias="X-Abacatepay-Signature")] = None,
+    signature: Annotated[str | None, Header(alias="x-signature")] = None,
+    request_id: Annotated[str | None, Header(alias="x-request-id")] = None,
 ) -> WebhookResponse:
     raw_payload = await request.body()
-    if not payment_service.validate_webhook_signature(raw_payload, signature):
+    data_id = request.query_params.get("data.id")
+    if not payment_service.validate_webhook_signature(signature, request_id, data_id):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid webhook signature.",
         )
 
     try:
-        result = await payment_service.process_webhook(raw_payload)
+        result = await payment_service.process_webhook(raw_payload, data_id=data_id)
     except InvalidWebhookPayload as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid webhook payload.",
+        ) from exc
+    except PaymentProviderUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "payment_provider_unavailable",
+                "message": exc.message,
+            },
         ) from exc
 
     return WebhookResponse(received=True, status=result.status)
