@@ -7,6 +7,7 @@ This repository is currently documentation-first: `PRD.md` defines the product a
 - `frontend/` for the Next.js App Router UI.
 - `tests/` for automated tests, mirroring the source layout where practical.
 - `docs/` for design notes and API contracts.
+- For project documentation lookups, check the Obsidian vault at `C:\Users\Kaike\Documents\codex-vault\Parserly`.
 
 ## Build, Test, and Development Commands
 No runnable app or scripts are committed yet. Add repo commands to the relevant manifest files and keep them consistent with `PRD.md`.
