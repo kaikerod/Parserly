@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from redis.asyncio import Redis
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -19,9 +30,16 @@ from app.core.quotas import (
     normalize_guest_id,
 )
 from app.core.redis import get_redis_client
-from app.core.security import get_optional_current_user
+from app.core.security import get_current_user, get_optional_current_user
+from app.models.analysis import Analysis
 from app.models.user import User
-from app.schemas.analysis import AnalysisQuotaResponse, AnalysisResponse
+from app.schemas.analysis import (
+    AnalysisHistoryItem,
+    AnalysisHistoryResponse,
+    AnalysisQuotaResponse,
+    AnalysisReport,
+    AnalysisResponse,
+)
 from app.services.analysis_service import (
     AIAnalysisUnavailable,
     AnalysisService,
@@ -45,6 +63,37 @@ def get_analysis_service(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AnalysisService:
     return AnalysisService(db_session=db_session, settings=settings)
+
+
+@router.get("", response_model=AnalysisHistoryResponse)
+async def list_analyses(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db_session: Annotated[AsyncSession, Depends(get_db_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AnalysisHistoryResponse:
+    total_result = await db_session.execute(
+        select(func.count())
+        .select_from(Analysis)
+        .where(Analysis.user_id == current_user.id)
+    )
+    total = int(total_result.scalar_one())
+
+    result = await db_session.execute(
+        select(Analysis)
+        .where(Analysis.user_id == current_user.id)
+        .order_by(Analysis.created_at.desc(), Analysis.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    analyses = result.scalars().all()
+
+    return AnalysisHistoryResponse(
+        items=[analysis_history_item(analysis) for analysis in analyses],
+        limit=limit,
+        offset=offset,
+        total=total,
+    )
 
 
 @router.get("/quota", response_model=AnalysisQuotaResponse)
@@ -75,6 +124,31 @@ async def get_analysis_quota(
         payment_required=payment_required,
         registration_required=False,
         message=PAYMENT_REQUIRED_MESSAGE if payment_required else None,
+    )
+
+
+@router.get("/{analysis_id}", response_model=AnalysisResponse)
+async def get_analysis(
+    analysis_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db_session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AnalysisResponse:
+    result = await db_session.execute(
+        select(Analysis).where(
+            Analysis.id == analysis_id,
+            Analysis.user_id == current_user.id,
+        )
+    )
+    analysis = result.scalar_one_or_none()
+    if analysis is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis was not found.",
+        )
+
+    return analysis_response(
+        analysis,
+        analyses_used=normalize_analyses_used(current_user.analyses_used),
     )
 
 
@@ -213,3 +287,25 @@ async def release_reserved_guest_analysis(
         return
 
     await redis_client.decr(guest_analysis_key(guest_id))
+
+
+def analysis_history_item(analysis: Analysis) -> AnalysisHistoryItem:
+    return AnalysisHistoryItem(
+        id=analysis.id,
+        filename=analysis.filename,
+        score=analysis.score or 0,
+        created_at=analysis.created_at,
+        model_used=analysis.model_used,
+    )
+
+
+def analysis_response(analysis: Analysis, *, analyses_used: int) -> AnalysisResponse:
+    return AnalysisResponse(
+        id=analysis.id,
+        filename=analysis.filename,
+        score=analysis.score or 0,
+        report_json=AnalysisReport.model_validate(analysis.report_json),
+        model_used=analysis.model_used,
+        created_at=analysis.created_at,
+        analyses_used=analyses_used,
+    )

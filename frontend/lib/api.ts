@@ -1,4 +1,8 @@
-import type { AnalysisQuotaResponse, AnalysisResponse } from "@/types/analysis";
+import type {
+  AnalysisHistoryResponse,
+  AnalysisQuotaResponse,
+  AnalysisResponse
+} from "@/types/analysis";
 import type { RequestMagicLinkResponse, LogoutResponse } from "@/types/auth";
 import type { CreateChargeResponse } from "@/types/payment";
 
@@ -65,6 +69,40 @@ export async function submitResumeForAnalysis(file: File): Promise<AnalysisRespo
   return parseJsonResponse<AnalysisResponse>(
     response,
     "Não foi possível concluir a análise."
+  );
+}
+
+export async function listAnalyses(limit = 10, offset = 0): Promise<AnalysisHistoryResponse> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset)
+  });
+  const response = await fetch(apiPath(`/analysis?${params.toString()}`), {
+    method: "GET",
+    headers: {
+      Accept: "application/json"
+    },
+    credentials: "include"
+  });
+
+  return parseJsonResponse<AnalysisHistoryResponse>(
+    response,
+    "Não foi possível carregar o histórico de análises."
+  );
+}
+
+export async function getAnalysisById(id: string): Promise<AnalysisResponse> {
+  const response = await fetch(apiPath(`/analysis/${encodeURIComponent(id)}`), {
+    method: "GET",
+    headers: {
+      Accept: "application/json"
+    },
+    credentials: "include"
+  });
+
+  return parseJsonResponse<AnalysisResponse>(
+    response,
+    "Não foi possível abrir a análise salva."
   );
 }
 

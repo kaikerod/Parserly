@@ -51,6 +51,21 @@ class AnalysisResponse(BaseModel):
     analyses_used: int
 
 
+class AnalysisHistoryItem(BaseModel):
+    id: UUID
+    filename: str
+    score: int
+    created_at: datetime
+    model_used: str
+
+
+class AnalysisHistoryResponse(BaseModel):
+    items: list[AnalysisHistoryItem]
+    limit: int
+    offset: int
+    total: int
+
+
 class AnalysisQuotaResponse(BaseModel):
     authenticated: bool
     remaining_analyses: int

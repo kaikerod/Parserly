@@ -35,6 +35,21 @@ export interface AnalysisResponse {
   analyses_used: number;
 }
 
+export interface AnalysisHistoryItem {
+  id: string;
+  filename: string;
+  score: number;
+  created_at: string;
+  model_used: string;
+}
+
+export interface AnalysisHistoryResponse {
+  items: AnalysisHistoryItem[];
+  limit: number;
+  offset: number;
+  total: number;
+}
+
 export interface AnalysisQuotaResponse {
   authenticated: boolean;
   remaining_analyses: number;

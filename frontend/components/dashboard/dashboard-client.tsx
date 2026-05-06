@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   BookOpenText,
+  CalendarClock,
+  ChevronRight,
   CreditCard,
   FileSearch,
+  History,
   Loader2,
   LogIn,
   LogOut,
@@ -17,14 +20,29 @@ import {
   UsersRound,
   UserPlus
 } from "lucide-react";
-import { ApiError, getAnalysisQuota, logout, submitResumeForAnalysis } from "@/lib/api";
-import type { AnalysisResponse } from "@/types/analysis";
+import {
+  ApiError,
+  getAnalysisById,
+  getAnalysisQuota,
+  listAnalyses,
+  logout,
+  submitResumeForAnalysis
+} from "@/lib/api";
+import type { AnalysisHistoryItem, AnalysisResponse } from "@/types/analysis";
 import { AnalysisReport } from "./analysis-report";
 import { Dropzone } from "./dropzone";
 import { PaywallModal } from "./paywall-modal";
 
 type SubmissionMode = "manual" | "after-payment";
 type AnalysisRequestStep = "quota" | "analysis";
+
+const HISTORY_DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit"
+});
 
 const AUTHENTICATED_DASHBOARD_METRICS = [
   { label: "Quota grátis", value: "3", detail: "análises por conta" },
@@ -91,8 +109,14 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isHistoryDetailLoading, setIsHistoryDetailLoading] = useState(false);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [submissionMode, setSubmissionMode] = useState<SubmissionMode>("manual");
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [hasPendingPixCharge, setHasPendingPixCharge] = useState(false);
@@ -102,6 +126,34 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
   const ActiveNavigationIcon = activeNavigationDetail.icon;
   const paymentActionLabel = hasPendingPixCharge ? "Reabrir QR Code PIX" : "Abrir pagamento PIX";
+
+  const loadAnalysisHistory = useCallback(async () => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    setIsHistoryLoading(true);
+    setHistoryError(null);
+
+    try {
+      const history = await listAnalyses();
+      setAnalysisHistory(history.items);
+      setHistoryTotal(history.total);
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        router.replace("/login");
+        return;
+      }
+
+      setHistoryError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Não foi possível carregar o histórico."
+      );
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }, [isAuthenticated, router]);
 
   useEffect(() => {
     if (!isAuthenticated || !paymentRequired || autoOpenedPayment) {
@@ -114,12 +166,17 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
     window.history.replaceState(null, "", "/dashboard");
   }, [autoOpenedPayment, isAuthenticated, paymentRequired]);
 
+  useEffect(() => {
+    void loadAnalysisHistory();
+  }, [loadAnalysisHistory]);
+
   const runAnalysis = useCallback(async (file: File, mode: SubmissionMode = "manual") => {
     setSelectedFile(file);
     setPendingFile(file);
     setError(null);
     setPaymentNotice(null);
     setSubmissionMode(mode);
+    setSelectedHistoryId(null);
     setIsSubmitting(true);
 
     let requestStep: AnalysisRequestStep = "quota";
@@ -140,8 +197,12 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
       requestStep = "analysis";
       const result = await submitResumeForAnalysis(file);
       setAnalysis(result);
+      setSelectedHistoryId(result.id);
       setPaywallOpen(false);
       setPendingFile(null);
+      if (isAuthenticated) {
+        void loadAnalysisHistory();
+      }
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 402) {
         setPaymentNotice(requestError.message || PAYMENT_REQUIRED_NOTICE);
@@ -159,6 +220,34 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
       setError(resolveAnalysisError(requestError, requestStep));
     } finally {
       setIsSubmitting(false);
+    }
+  }, [isAuthenticated, loadAnalysisHistory, router]);
+
+  const handleSelectHistoryItem = useCallback(async (item: AnalysisHistoryItem) => {
+    setSelectedHistoryId(item.id);
+    setIsHistoryDetailLoading(true);
+    setHistoryError(null);
+    setError(null);
+    setPaymentNotice(null);
+
+    try {
+      const savedAnalysis = await getAnalysisById(item.id);
+      setAnalysis(savedAnalysis);
+      setSelectedFile(null);
+      setPendingFile(null);
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        router.replace("/login");
+        return;
+      }
+
+      setHistoryError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Não foi possível abrir a análise salva."
+      );
+    } finally {
+      setIsHistoryDetailLoading(false);
     }
   }, [router]);
 
@@ -329,20 +418,21 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
         </header>
 
         <div className="grid gap-5 lg:grid-cols-[25rem_1fr]">
-          <section
-            id="upload-panel"
-            aria-labelledby="upload-title"
-            className="rounded-md border border-line/75 bg-graphite/90 p-5 shadow-panel backdrop-blur"
-          >
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase text-acid">Upload</p>
-                <h2 id="upload-title" className="mt-1 font-display text-2xl font-semibold">
-                  Novo currículo
-                </h2>
+          <div className="space-y-5">
+            <section
+              id="upload-panel"
+              aria-labelledby="upload-title"
+              className="rounded-md border border-line/75 bg-graphite/90 p-5 shadow-panel backdrop-blur"
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-acid">Upload</p>
+                  <h2 id="upload-title" className="mt-1 font-display text-2xl font-semibold">
+                    Novo currículo
+                  </h2>
+                </div>
+                <LockKeyhole className="h-6 w-6 text-paper/30" aria-hidden="true" />
               </div>
-              <LockKeyhole className="h-6 w-6 text-paper/30" aria-hidden="true" />
-            </div>
 
             <Dropzone
               disabled={isSubmitting}
@@ -383,7 +473,7 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
               </div>
             ) : null}
 
-            {analysis ? (
+            {analysis && selectedFile ? (
               <button
                 type="button"
                 onClick={() => {
@@ -398,7 +488,21 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
                 Reanalisar arquivo selecionado
               </button>
             ) : null}
-          </section>
+            </section>
+
+            {isAuthenticated ? (
+              <AnalysisHistoryPanel
+                items={analysisHistory}
+                total={historyTotal}
+                isLoading={isHistoryLoading}
+                isDetailLoading={isHistoryDetailLoading}
+                selectedId={selectedHistoryId}
+                error={historyError}
+                onRefresh={() => void loadAnalysisHistory()}
+                onSelect={(item) => void handleSelectHistoryItem(item)}
+              />
+            ) : null}
+          </div>
 
           <div className="min-w-0 rounded-md border border-line/75 bg-graphite/85 p-5 shadow-panel backdrop-blur">
             {analysis ? (
@@ -432,6 +536,119 @@ function PaymentActionButton({ label, onClick }: { label: string; onClick: () =>
       <QrCode className="h-4 w-4 text-acid" aria-hidden="true" />
       {label}
     </button>
+  );
+}
+
+interface AnalysisHistoryPanelProps {
+  items: AnalysisHistoryItem[];
+  total: number;
+  isLoading: boolean;
+  isDetailLoading: boolean;
+  selectedId: string | null;
+  error: string | null;
+  onRefresh: () => void;
+  onSelect: (item: AnalysisHistoryItem) => void;
+}
+
+function AnalysisHistoryPanel({
+  items,
+  total,
+  isLoading,
+  isDetailLoading,
+  selectedId,
+  error,
+  onRefresh,
+  onSelect
+}: AnalysisHistoryPanelProps) {
+  return (
+    <section
+      aria-labelledby="history-title"
+      className="rounded-md border border-line/75 bg-graphite/90 p-5 shadow-panel backdrop-blur"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase text-copper">Histórico</p>
+          <h2 id="history-title" className="mt-1 font-display text-2xl font-semibold">
+            Análises salvas
+          </h2>
+          <p className="mt-1 text-xs text-paper/50">{total} registros encontrados</p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isLoading}
+          className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/70 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label="Atualizar histórico"
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <RotateCw className="h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+
+      {error ? (
+        <div className="mt-4 flex items-start gap-3 rounded-md border border-coral/35 bg-coral/10 px-3 py-3 text-sm text-paper">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-coral" aria-hidden="true" />
+          <p>{error}</p>
+        </div>
+      ) : null}
+
+      <div className="mt-4 space-y-2">
+        {isLoading && items.length === 0 ? (
+          <div className="flex items-center gap-3 rounded-md border border-line/70 bg-night/70 px-3 py-4 text-sm text-paper/60">
+            <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
+            Carregando histórico...
+          </div>
+        ) : null}
+
+        {!isLoading && items.length === 0 ? (
+          <div className="rounded-md border border-dashed border-line/70 bg-night/50 px-4 py-5 text-sm text-paper/60">
+            <History className="mb-3 h-5 w-5 text-paper/35" aria-hidden="true" />
+            Nenhuma análise salva ainda.
+          </div>
+        ) : null}
+
+        {items.map((item) => {
+          const isSelected = selectedId === item.id;
+          const isOpening = isSelected && isDetailLoading;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onSelect(item)}
+              className={[
+                "focus-ring grid min-h-20 w-full grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md border px-3 py-3 text-left transition",
+                isSelected
+                  ? "border-acid/50 bg-acid/10"
+                  : "border-line/70 bg-night/65 hover:border-acid/35 hover:bg-fog"
+              ].join(" ")}
+              aria-pressed={isSelected}
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-paper">
+                  {item.filename}
+                </span>
+                <span className="mt-2 flex items-center gap-1.5 text-xs text-paper/50">
+                  <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {formatAnalysisDate(item.created_at)}
+                </span>
+              </span>
+              <span className="rounded-md border border-line/70 bg-graphite px-2.5 py-1 text-sm font-bold text-acid">
+                {item.score}
+              </span>
+              {isOpening ? (
+                <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-paper/35" aria-hidden="true" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -477,6 +694,16 @@ function EmptyReportState({ isSubmitting }: { isSubmitting: boolean }) {
       </div>
     </section>
   );
+}
+
+function formatAnalysisDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Data indisponível";
+  }
+
+  return HISTORY_DATE_FORMATTER.format(date);
 }
 
 function isRegistrationRequiredError(error: ApiError) {

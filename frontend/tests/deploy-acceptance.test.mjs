@@ -69,6 +69,23 @@ test("dashboard gates upload by quota and opens login or paywall paths", async (
   assert.match(dashboard, /onPaymentConfirmed=\{handlePaymentConfirmed\}/);
 });
 
+test("authenticated dashboard loads and opens persistent analysis history", async () => {
+  const api = await readSource("lib/api.ts");
+  const dashboard = await readSource("components/dashboard/dashboard-client.tsx");
+
+  assert.match(api, /export async function listAnalyses/);
+  assert.match(api, /export async function getAnalysisById/);
+  assert.match(api, /apiPath\(`\/analysis\?\$\{params\.toString\(\)\}`\)/);
+  assert.match(api, /apiPath\(`\/analysis\/\$\{encodeURIComponent\(id\)\}`\)/);
+
+  assert.match(dashboard, /const history = await listAnalyses\(\)/);
+  assert.match(dashboard, /if \(!isAuthenticated\) \{\s+return;\s+\}/);
+  assert.match(dashboard, /void loadAnalysisHistory\(\)/);
+  assert.match(dashboard, /const savedAnalysis = await getAnalysisById\(item\.id\)/);
+  assert.match(dashboard, /<AnalysisHistoryPanel/);
+  assert.match(dashboard, /items=\{analysisHistory\}/);
+});
+
 test("login page is framed as access for registered users", async () => {
   const loginClient = await readSource("components/auth/login-client.tsx");
   const loginPage = await readSource("app/login/page.tsx");
