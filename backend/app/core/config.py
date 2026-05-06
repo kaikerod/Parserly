@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     mercadopago_access_token: str = ""
     mercadopago_api_url: str = "https://api.mercadopago.com"
     mercadopago_webhook_secret: str = ""
+    mercadopago_mock_payments: bool = False
     analysis_price_cents: int = 1990
 
     resend_api_key: str = ""

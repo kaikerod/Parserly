@@ -21,6 +21,7 @@ from app.services.payment_service import (
     InvalidWebhookPayload,
     MERCADOPAGO_PIX_EXPIRATION_SECONDS,
     PaymentCharge,
+    PaymentProviderUnavailable,
     PaymentService,
     WebhookProcessResult,
 )
@@ -334,6 +335,64 @@ def test_mercadopago_pix_expiration_keeps_buffer_over_provider_minimum() -> None
     assert MERCADOPAGO_PIX_EXPIRATION_SECONDS > 30 * 60
 
 
+def test_mercadopago_mock_charge_generates_qr_payload_without_access_token() -> None:
+    class MockChargeRedis:
+        async def eval(self, script: str, key_count: int, key: str, *args: object) -> list[int]:
+            return [1, int(args[0]), 1]
+
+    class MockChargeDbSession:
+        def __init__(self) -> None:
+            self.saved_payment = None
+            self.committed = False
+
+        def add(self, payment: object) -> None:
+            self.saved_payment = payment
+
+        async def commit(self) -> None:
+            self.committed = True
+
+        async def rollback(self) -> None:
+            self.committed = False
+
+    db_session = MockChargeDbSession()
+    service = PaymentService(
+        db_session=db_session,  # type: ignore[arg-type]
+        redis_client=MockChargeRedis(),  # type: ignore[arg-type]
+        settings=Settings(
+            mercadopago_access_token="",
+            mercadopago_mock_payments=True,
+            analysis_price_cents=1990,
+        ),
+    )
+    user = SimpleNamespace(id=uuid4(), email="buyer@example.com")
+
+    charge = asyncio.run(service.create_charge(user))  # type: ignore[arg-type]
+
+    assert charge.billing_id.startswith("mock-")
+    assert charge.pix_qr_code == ""
+    assert charge.pix_copy_paste.startswith("PARSERLY_MOCK_PIX|NAO_PAGUE|")
+    assert charge.amount_cents == 1990
+    assert db_session.saved_payment is not None
+    assert db_session.committed is True
+
+
+def test_mercadopago_create_charge_rejects_unsupported_test_access_token() -> None:
+    service = PaymentService(
+        db_session=object(),  # type: ignore[arg-type]
+        redis_client=object(),  # type: ignore[arg-type]
+        settings=Settings(
+            mercadopago_access_token="TEST-123",
+            analysis_price_cents=1990,
+        ),
+    )
+    user = SimpleNamespace(id=uuid4(), email="buyer@example.com")
+
+    with pytest.raises(PaymentProviderUnavailable) as exc_info:
+        asyncio.run(service._create_mercadopago_pix(user))  # type: ignore[arg-type]
+
+    assert "token TEST" in exc_info.value.message
+
+
 def test_mercadopago_create_charge_retries_transient_provider_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -390,7 +449,7 @@ def test_mercadopago_create_charge_retries_transient_provider_error(
         db_session=object(),  # type: ignore[arg-type]
         redis_client=object(),  # type: ignore[arg-type]
         settings=Settings(
-            mercadopago_access_token="test-token",
+            mercadopago_access_token="APP_USR-test-token",
             analysis_price_cents=1990,
         ),
     )

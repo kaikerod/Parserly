@@ -121,7 +121,11 @@ class PaymentService:
         await self._enforce_create_charge_rate_limit(user.id)
 
         try:
-            provider_charge = await self._create_mercadopago_pix(user)
+            provider_charge = (
+                self._create_mock_pix(user)
+                if self.settings.mercadopago_mock_payments
+                else await self._create_mercadopago_pix(user)
+            )
         except PaymentProviderUnavailable:
             await self._release_create_charge_rate_limit(user.id)
             raise
@@ -150,6 +154,28 @@ class PaymentService:
             raise
 
         return provider_charge
+
+    def _create_mock_pix(self, user: User) -> PaymentCharge:
+        expires_at = datetime.now(UTC) + timedelta(seconds=MERCADOPAGO_PIX_EXPIRATION_SECONDS)
+        billing_id = f"mock-{uuid4()}"
+        pix_copy_paste = "|".join(
+            (
+                "PARSERLY_MOCK_PIX",
+                "NAO_PAGUE",
+                f"billing_id={billing_id}",
+                f"amount_cents={self.settings.analysis_price_cents}",
+            )
+        )
+
+        return PaymentCharge(
+            billing_id=billing_id,
+            pix_qr_code="",
+            pix_copy_paste=pix_copy_paste,
+            expires_at=expires_at,
+            expires_in=MERCADOPAGO_PIX_EXPIRATION_SECONDS,
+            amount_cents=self.settings.analysis_price_cents,
+            analysis_credits=PAID_ANALYSIS_CREDITS,
+        )
 
     def validate_webhook_signature(
         self,
@@ -231,6 +257,13 @@ class PaymentService:
     async def _create_mercadopago_pix(self, user: User) -> PaymentCharge:
         if not self.settings.mercadopago_access_token:
             raise PaymentProviderUnavailable("O access token do Mercado Pago nao esta configurado.")
+
+        if self._uses_unsupported_test_access_token():
+            raise PaymentProviderUnavailable(
+                "O token TEST do Mercado Pago nao gera PIX neste fluxo. "
+                "Use credenciais de producao de uma conta vendedor de teste "
+                "ou credenciais de producao ativadas."
+            )
 
         expires_at = datetime.now(UTC) + timedelta(seconds=MERCADOPAGO_PIX_EXPIRATION_SECONDS)
         idempotency_key = f"parserly-{uuid4()}"
@@ -511,6 +544,9 @@ class PaymentService:
         if idempotency_key:
             headers["X-Idempotency-Key"] = idempotency_key
         return headers
+
+    def _uses_unsupported_test_access_token(self) -> bool:
+        return self.settings.mercadopago_access_token.strip().upper().startswith("TEST-")
 
     def _mercadopago_webhook_url(self) -> str | None:
         notification_url = f"{self.settings.api_public_url.rstrip('/')}/api/v1/payments/webhook"
