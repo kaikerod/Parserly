@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
+import app.services.payment_service as payment_module
 from app.core.config import Settings
 from app.core.quotas import FREE_ANALYSIS_LIMIT, guest_analysis_key
 from app.api.v1.routers.analysis import GuestQuotaExceeded, release_reserved_guest_analysis
@@ -18,6 +19,7 @@ from app.api.v1.routers.analysis import reserve_guest_analysis
 from app.services.auth_service import AuthService, InvalidMagicLinkToken, MagicLinkPayload
 from app.services.payment_service import (
     InvalidWebhookPayload,
+    MERCADOPAGO_PIX_EXPIRATION_SECONDS,
     PaymentCharge,
     PaymentService,
     WebhookProcessResult,
@@ -72,20 +74,62 @@ def test_guest_quota_reservation_is_released_after_processing_failure() -> None:
 class MagicLinkRedis:
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
+        self.deleted_keys: list[str] = []
 
     async def get(self, key: str) -> str | None:
         return self.store.get(key)
 
-    async def eval(self, script: str, key_count: int, key: str, *args: object) -> str | None:
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self.store[key] = value
+
+    async def delete(self, key: str) -> None:
+        self.deleted_keys.append(key)
+        self.store.pop(key, None)
+
+    async def eval(
+        self, script: str, key_count: int, key: str, *args: object
+    ) -> str | list[int] | None:
+        if "INCR" in script:
+            return [1, int(args[0]) if args else 1]
+
         value = self.store.get(key)
         if value is not None:
             del self.store[key]
         return value
 
 
+class FakeEmailService:
+    def __init__(self) -> None:
+        self.sent_magic_links: list[dict[str, object]] = []
+
+    async def send_magic_link(
+        self,
+        *,
+        email: str,
+        magic_link: str,
+        expires_in: int,
+    ) -> None:
+        self.sent_magic_links.append(
+            {
+                "email": email,
+                "magic_link": magic_link,
+                "expires_in": expires_in,
+            }
+        )
+
+
 class FakeAuthService(AuthService):
-    def __init__(self, redis: MagicLinkRedis) -> None:
+    def __init__(
+        self,
+        redis: MagicLinkRedis,
+        *,
+        existing_user: SimpleNamespace | None = None,
+        guest_quota_exhausted: bool = False,
+    ) -> None:
         self.test_user_id = uuid4()
+        self.existing_user = existing_user
+        self.guest_quota_exhausted = guest_quota_exhausted
+        self.email_service = FakeEmailService()
         super().__init__(
             db_session=object(),  # type: ignore[arg-type]
             redis_client=redis,  # type: ignore[arg-type]
@@ -94,11 +138,21 @@ class FakeAuthService(AuthService):
                 secret_key="magic-link-test-secret-with-32-bytes-minimum",
                 app_url="https://parserly.test",
             ),
-            email_service=object(),  # type: ignore[arg-type]
+            email_service=self.email_service,  # type: ignore[arg-type]
         )
 
+    async def _get_user_by_email(self, email: str) -> SimpleNamespace | None:
+        return self.existing_user
+
     async def _get_or_create_user(self, email: str) -> SimpleNamespace:
-        return SimpleNamespace(id=self.test_user_id, email=email, analyses_used=0)
+        return self.existing_user or SimpleNamespace(
+            id=self.test_user_id,
+            email=email,
+            analyses_used=0,
+        )
+
+    async def _is_guest_quota_exhausted(self, guest_id: str | None) -> bool:
+        return self.guest_quota_exhausted
 
     async def _mark_user_free_quota_exhausted(self, user: SimpleNamespace) -> None:
         user.analyses_used = FREE_ANALYSIS_LIMIT
@@ -138,6 +192,84 @@ def test_magic_link_requires_payment_when_payload_marks_exhausted_guest() -> Non
     )
 
     session = asyncio.run(service.verify_magic_link(token))
+
+    assert session.requires_payment is True
+
+
+def test_existing_user_magic_link_ignores_exhausted_guest_quota() -> None:
+    user = SimpleNamespace(id=uuid4(), email="person@example.com", analyses_used=1)
+    redis = MagicLinkRedis()
+    service = FakeAuthService(
+        redis,
+        existing_user=user,
+        guest_quota_exhausted=True,
+    )
+
+    result = asyncio.run(
+        service.request_magic_link("Person@Example.com", guest_id=str(uuid4()))
+    )
+
+    assert result.email == "person@example.com"
+    assert result.requires_payment is False
+    assert service.email_service.sent_magic_links == [
+        {
+            "email": "person@example.com",
+            "magic_link": result.magic_link,
+            "expires_in": result.expires_in,
+        }
+    ]
+
+    token = UUID(result.magic_link.rsplit("token=", 1)[1])
+    payload = service._decode_magic_link_payload(redis.store[service._magic_link_key(token)])
+
+    assert payload == MagicLinkPayload(
+        email="person@example.com",
+        requires_payment=False,
+        existing_user=True,
+    )
+
+    session = asyncio.run(service.verify_magic_link(token, guest_id=str(uuid4())))
+
+    assert session.user_id == user.id
+    assert session.requires_payment is False
+    assert user.analyses_used == 1
+
+
+def test_existing_user_magic_link_requires_payment_when_user_quota_is_exhausted() -> None:
+    user = SimpleNamespace(
+        id=uuid4(),
+        email="person@example.com",
+        analyses_used=FREE_ANALYSIS_LIMIT,
+    )
+    service = FakeAuthService(
+        MagicLinkRedis(),
+        existing_user=user,
+        guest_quota_exhausted=False,
+    )
+
+    result = asyncio.run(service.request_magic_link("person@example.com"))
+
+    assert result.requires_payment is True
+
+
+def test_new_user_magic_link_preserves_exhausted_guest_quota() -> None:
+    redis = MagicLinkRedis()
+    service = FakeAuthService(redis, guest_quota_exhausted=True)
+
+    result = asyncio.run(
+        service.request_magic_link("person@example.com", guest_id=str(uuid4()))
+    )
+
+    token = UUID(result.magic_link.rsplit("token=", 1)[1])
+    payload = service._decode_magic_link_payload(redis.store[service._magic_link_key(token)])
+
+    assert payload == MagicLinkPayload(
+        email="person@example.com",
+        requires_payment=True,
+        existing_user=False,
+    )
+
+    session = asyncio.run(service.verify_magic_link(token, guest_id=str(uuid4())))
 
     assert session.requires_payment is True
 
@@ -196,6 +328,81 @@ def test_mercadopago_expiration_uses_required_date_format() -> None:
     formatted = PaymentService._format_mercadopago_datetime(expires_at)
 
     assert formatted == "2026-05-03T15:30:00.000+00:00"
+
+
+def test_mercadopago_pix_expiration_keeps_buffer_over_provider_minimum() -> None:
+    assert MERCADOPAGO_PIX_EXPIRATION_SECONDS > 30 * 60
+
+
+def test_mercadopago_create_charge_retries_transient_provider_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent_requests: list[dict[str, object]] = []
+
+    class RetryAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "RetryAsyncClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def post(
+            self,
+            url: str,
+            *,
+            headers: dict[str, str],
+            json: dict[str, object],
+        ) -> httpx.Response:
+            sent_requests.append({"url": url, "headers": headers, "json": json})
+            request = httpx.Request("POST", url)
+            if len(sent_requests) == 1:
+                return httpx.Response(
+                    500,
+                    json={"message": "internal_error"},
+                    request=request,
+                )
+
+            return httpx.Response(
+                201,
+                json={
+                    "id": 123456,
+                    "date_of_expiration": json["date_of_expiration"],
+                    "point_of_interaction": {
+                        "transaction_data": {
+                            "qr_code": "000201PIX",
+                            "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgAAA",
+                        }
+                    },
+                },
+                request=request,
+            )
+
+    async def no_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(payment_module.httpx, "AsyncClient", RetryAsyncClient)
+    monkeypatch.setattr(payment_module.asyncio, "sleep", no_sleep)
+
+    service = PaymentService(
+        db_session=object(),  # type: ignore[arg-type]
+        redis_client=object(),  # type: ignore[arg-type]
+        settings=Settings(
+            mercadopago_access_token="test-token",
+            analysis_price_cents=1990,
+        ),
+    )
+    user = SimpleNamespace(id=uuid4(), email="buyer@example.com")
+
+    charge = asyncio.run(service._create_mercadopago_pix(user))  # type: ignore[arg-type]
+
+    assert charge.billing_id == "123456"
+    assert charge.pix_copy_paste == "000201PIX"
+    assert len(sent_requests) == 2
+    assert sent_requests[0]["headers"] == sent_requests[1]["headers"]
+    assert sent_requests[0]["json"] == sent_requests[1]["json"]
 
 
 def test_mercadopago_webhook_url_skips_local_development_urls() -> None:

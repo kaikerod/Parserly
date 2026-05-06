@@ -8,6 +8,7 @@ import {
   CreditCard,
   FileSearch,
   Loader2,
+  LogIn,
   LogOut,
   LockKeyhole,
   QrCode,
@@ -255,13 +256,22 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
               Sair
             </button>
           ) : (
-            <a
-              href="/login"
-              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
-            >
-              <UserPlus className="h-4 w-4" aria-hidden="true" />
-              Cadastrar
-            </a>
+            <div className="flex items-center gap-2">
+              <a
+                href="/login"
+                className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
+              >
+                <LogIn className="h-4 w-4" aria-hidden="true" />
+                Entrar
+              </a>
+              <a
+                href="/login?intent=registration"
+                className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
+              >
+                <UserPlus className="h-4 w-4" aria-hidden="true" />
+                Cadastrar
+              </a>
+            </div>
           )}
         </nav>
 

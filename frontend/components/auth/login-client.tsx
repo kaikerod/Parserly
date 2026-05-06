@@ -11,24 +11,37 @@ import {
   Loader2,
   LockKeyhole,
   Mail,
-  ShieldCheck
+  ShieldCheck,
+  UserCheck
 } from "lucide-react";
 import { ApiError, requestMagicLink } from "@/lib/api";
 
 type LoginPhase = "idle" | "submitting" | "sent" | "error";
+type LoginIntent = "login" | "registration";
 
 interface LoginClientProps {
   initialError?: string;
   initialNotice?: string;
+  intent?: LoginIntent;
 }
 
 const LOGIN_MARKERS = [
-  { label: "Sessão", value: "7 dias" },
+  { label: "Conta", value: "existente" },
   { label: "Link", value: "15 min" },
-  { label: "Quota", value: "3 grátis" }
+  { label: "Sessão", value: "7 dias" }
 ];
 
-export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
+const REGISTRATION_MARKERS = [
+  { label: "Cadastro", value: "sem senha" },
+  { label: "Link", value: "15 min" },
+  { label: "Checkout", value: "PIX" }
+];
+
+export function LoginClient({
+  initialError,
+  initialNotice,
+  intent = "login"
+}: LoginClientProps) {
   const [email, setEmail] = useState("");
   const [phase, setPhase] = useState<LoginPhase>(initialError ? "error" : "idle");
   const [error, setError] = useState<string | null>(initialError ?? null);
@@ -38,6 +51,9 @@ export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
 
   const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
   const isSubmitting = phase === "submitting";
+  const emailDescriptionId = error ? "email-help login-error" : "email-help";
+  const isRegistrationFlow = intent === "registration";
+  const markers = isRegistrationFlow ? REGISTRATION_MARKERS : LOGIN_MARKERS;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -91,7 +107,9 @@ export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
             <div className="flex min-w-0 items-center gap-3">
               <span className="font-display text-base font-semibold text-paper">Parserly</span>
               <span className="hidden text-paper/30 sm:inline">/</span>
-              <span className="hidden truncate sm:inline">Acesso por magic link</span>
+              <span className="hidden truncate sm:inline">
+                {isRegistrationFlow ? "Cadastro por magic link" : "Login de usuário cadastrado"}
+              </span>
             </div>
           </div>
 
@@ -101,23 +119,28 @@ export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
         <section className="grid flex-1 items-center gap-6 pb-5 lg:grid-cols-[1fr_29rem]">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-md border border-line/70 bg-graphite/80 px-3 py-1.5 text-xs font-bold uppercase text-paper/70 shadow-tool backdrop-blur">
-              <LockKeyhole className="h-4 w-4 text-acid" aria-hidden="true" />
-              Login seguro
+              {isRegistrationFlow ? (
+                <LockKeyhole className="h-4 w-4 text-acid" aria-hidden="true" />
+              ) : (
+                <UserCheck className="h-4 w-4 text-acid" aria-hidden="true" />
+              )}
+              {isRegistrationFlow ? "Cadastro por e-mail" : "Conta existente"}
             </div>
 
             <h1 className="mt-5 max-w-4xl font-display text-5xl font-semibold leading-none text-paper md:text-6xl">
-              Entre sem senha.
+              {isRegistrationFlow ? "Crie seu acesso." : "Acesse sua conta."}
               <br />
               Continue sua <span className="accent-text">análise.</span>
             </h1>
 
             <p className="mt-5 max-w-2xl text-sm leading-6 text-paper/65">
-              Use o mesmo e-mail para recuperar sua sessão, manter sua quota e continuar suas
-              análises.
+              {isRegistrationFlow
+                ? "Use seu e-mail para identificar sua conta, preservar sua quota e continuar sem senha."
+                : "Use o e-mail já cadastrado para recuperar sua sessão, manter sua quota e continuar suas análises sem senha."}
             </p>
 
             <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
-              {LOGIN_MARKERS.map((marker) => (
+              {markers.map((marker) => (
                 <div
                   key={marker.label}
                   className="rounded-md border border-line/70 bg-graphite/80 p-4 shadow-tool backdrop-blur"
@@ -137,9 +160,11 @@ export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
           >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase text-acid">Identificação</p>
+                <p className="text-xs font-semibold uppercase text-acid">
+                  {isRegistrationFlow ? "Identificação" : "Conta cadastrada"}
+                </p>
                 <h2 id="login-title" className="mt-1 font-display text-3xl font-semibold">
-                  Acessar conta
+                  {isRegistrationFlow ? "Receber magic link" : "Entrar no Parserly"}
                 </h2>
               </div>
               <ShieldCheck className="h-6 w-6 text-teal" aria-hidden="true" />
@@ -148,7 +173,7 @@ export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <div>
                 <label htmlFor="email" className="text-sm font-semibold text-paper/80">
-                  E-mail
+                  {isRegistrationFlow ? "E-mail" : "E-mail cadastrado"}
                 </label>
                 <div className="relative mt-2">
                   <Mail
@@ -165,9 +190,14 @@ export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
                     disabled={isSubmitting}
                     className="focus-ring min-h-12 w-full rounded-md border border-line/80 bg-night py-3 pl-11 pr-4 text-sm text-paper placeholder:text-paper/30 transition hover:border-acid/45 disabled:cursor-not-allowed disabled:opacity-70"
                     placeholder="voce@empresa.com"
-                    aria-describedby={error ? "login-error" : undefined}
+                    aria-describedby={emailDescriptionId}
                   />
                 </div>
+                <p id="email-help" className="mt-2 text-xs leading-5 text-paper/45">
+                  {isRegistrationFlow
+                    ? "Se o e-mail já existir, ele será usado para recuperar sua conta."
+                    : "O acesso é enviado somente para e-mails com conta ativa no Parserly."}
+                </p>
               </div>
 
               <button
@@ -180,7 +210,11 @@ export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
                 ) : (
                   <ArrowRight className="h-5 w-5" aria-hidden="true" />
                 )}
-                {isSubmitting ? "Enviando link..." : "Enviar link de acesso"}
+                {isSubmitting
+                  ? "Enviando link..."
+                  : isRegistrationFlow
+                    ? "Enviar link de acesso"
+                    : "Receber link de login"}
               </button>
             </form>
 
@@ -198,9 +232,11 @@ export function LoginClient({ initialError, initialNotice }: LoginClientProps) {
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
                   <div>
-                    <p className="font-semibold">Link enviado para {sentTo}.</p>
+                    <p className="font-semibold">Verifique o e-mail {sentTo}.</p>
                     <p className="mt-1 leading-6 text-paper/65">
-                      Ele expira em 15 minutos e só pode ser usado uma vez.
+                      {isRegistrationFlow
+                        ? "O link chega em instantes, expira em 15 minutos e só pode ser usado uma vez."
+                        : "Se houver uma conta ativa, o link de login chega em instantes e expira em 15 minutos."}
                     </p>
                   </div>
                 </div>
@@ -267,6 +303,10 @@ function resolveLoginError(error: unknown) {
 
     if (error.status === 422) {
       return "Informe um e-mail válido para receber o link de acesso.";
+    }
+
+    if (error.status === 404) {
+      return "Este acesso é apenas para contas já cadastradas. Confira o e-mail e tente novamente.";
     }
 
     return error.message;

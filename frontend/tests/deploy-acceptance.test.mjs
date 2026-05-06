@@ -69,6 +69,20 @@ test("dashboard gates upload by quota and opens login or paywall paths", async (
   assert.match(dashboard, /onPaymentConfirmed=\{handlePaymentConfirmed\}/);
 });
 
+test("login page is framed as access for registered users", async () => {
+  const loginClient = await readSource("components/auth/login-client.tsx");
+  const loginPage = await readSource("app/login/page.tsx");
+
+  assert.match(loginClient, /Login de usuário cadastrado/);
+  assert.match(loginClient, /E-mail cadastrado/);
+  assert.match(loginClient, /conta ativa no Parserly/);
+  assert.match(loginClient, /Cadastro por magic link/);
+  assert.match(loginClient, /error\.status === 404/);
+  assert.match(loginPage, /e-mail já cadastrado/);
+  assert.match(loginPage, /const isRegistrationIntent = intentCode === "registration" \|\| reasonCode === "free-limit"/);
+  assert.match(loginPage, /intent=\{isRegistrationIntent \? "registration" : "login"\}/);
+});
+
 test("paywall creates PIX charge, listens for confirmation, and handles expiration", async () => {
   const paywall = await readSource("components/dashboard/paywall-modal.tsx");
 

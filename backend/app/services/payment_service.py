@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import ipaddress
@@ -7,6 +8,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from time import monotonic
 from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
@@ -24,11 +26,14 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-MERCADOPAGO_PIX_EXPIRATION_SECONDS = 30 * 60
+MERCADOPAGO_PIX_EXPIRATION_SECONDS = 35 * 60
 PAID_ANALYSIS_CREDITS = 10
 CREATE_CHARGE_RATE_LIMIT_SECONDS = 60 * 60
 CREATE_CHARGE_RATE_LIMIT_MAX_REQUESTS = 5
 MERCADOPAGO_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=10.0, pool=5.0)
+MERCADOPAGO_MAX_ATTEMPTS = 3
+MERCADOPAGO_RETRY_DELAY_SECONDS = 0.75
+MERCADOPAGO_RETRY_STATUS_CODES = {500, 502, 503, 504}
 MERCADOPAGO_FINAL_UNPAID_STATUSES = {
     "cancelled",
     "canceled",
@@ -247,19 +252,40 @@ class PaymentService:
         if notification_url is not None:
             payload["notification_url"] = notification_url
 
+        last_error: Exception | None = None
         async with httpx.AsyncClient(timeout=MERCADOPAGO_TIMEOUT) as client:
-            try:
-                response = await client.post(
-                    self._mercadopago_url("/v1/payments"),
-                    headers=self._mercadopago_headers(idempotency_key=idempotency_key),
-                    json=payload,
-                )
-                response.raise_for_status()
-            except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
-                self._log_mercadopago_request_error("create_charge", exc)
-                raise PaymentProviderUnavailable(self._mercadopago_user_message(exc)) from exc
+            for attempt in range(1, MERCADOPAGO_MAX_ATTEMPTS + 1):
+                started_at = monotonic()
+                try:
+                    response = await client.post(
+                        self._mercadopago_url("/v1/payments"),
+                        headers=self._mercadopago_headers(idempotency_key=idempotency_key),
+                        json=payload,
+                    )
+                    if response.status_code in MERCADOPAGO_RETRY_STATUS_CODES:
+                        raise httpx.HTTPStatusError(
+                            "Mercado Pago returned retryable status",
+                            request=response.request,
+                            response=response,
+                        )
+                    response.raise_for_status()
+                    return self._parse_charge_response(response, expires_at)
+                except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
+                    last_error = exc
+                    self._log_mercadopago_request_error(
+                        "create_charge",
+                        exc,
+                        attempt=attempt,
+                        duration_ms=round((monotonic() - started_at) * 1000, 2),
+                    )
 
-        return self._parse_charge_response(response, expires_at)
+                    if not self._should_retry_mercadopago_error(exc):
+                        break
+
+                if attempt < MERCADOPAGO_MAX_ATTEMPTS:
+                    await asyncio.sleep(MERCADOPAGO_RETRY_DELAY_SECONDS)
+
+        raise PaymentProviderUnavailable(self._mercadopago_user_message(last_error)) from last_error
 
     def _parse_charge_response(
         self,
@@ -550,7 +576,26 @@ class PaymentService:
         return False
 
     @staticmethod
-    def _log_mercadopago_request_error(action: str, exc: Exception) -> None:
+    def _should_retry_mercadopago_error(exc: Exception) -> bool:
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+            return exc.response.status_code in MERCADOPAGO_RETRY_STATUS_CODES
+
+        return isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
+
+    @staticmethod
+    def _log_mercadopago_request_error(
+        action: str,
+        exc: Exception,
+        *,
+        attempt: int | None = None,
+        duration_ms: float | None = None,
+    ) -> None:
+        extra: dict[str, object] = {}
+        if attempt is not None:
+            extra["attempt"] = attempt
+        if duration_ms is not None:
+            extra["duration_ms"] = duration_ms
+
         if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
             log_structured(
                 logger,
@@ -559,6 +604,7 @@ class PaymentService:
                 action=action,
                 status=exc.response.status_code,
                 response=PaymentService._mercadopago_response_summary(exc.response),
+                **extra,
             )
             return
 
@@ -568,13 +614,17 @@ class PaymentService:
             "mercadopago_request_failed",
             action=action,
             error=exc.__class__.__name__,
+            **extra,
         )
 
     @staticmethod
-    def _mercadopago_user_message(exc: Exception) -> str:
+    def _mercadopago_user_message(exc: Exception | None) -> str:
         if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
             if exc.response.status_code in {401, 403}:
                 return "O access token do Mercado Pago e invalido ou nao tem permissao."
+
+            if exc.response.status_code in MERCADOPAGO_RETRY_STATUS_CODES:
+                return "Mercado Pago retornou erro temporario ao gerar a cobranca PIX. Tente novamente em instantes."
 
             provider_error = PaymentService._mercadopago_error_value(exc.response)
             if provider_error:

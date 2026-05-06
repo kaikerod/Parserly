@@ -74,6 +74,7 @@ class AuthSession:
 class MagicLinkPayload:
     email: str
     requires_payment: bool = False
+    existing_user: bool = False
 
 
 class AuthService:
@@ -101,7 +102,13 @@ class AuthService:
 
         token = uuid4()
         magic_link = self._build_magic_link(token)
-        requires_payment = await self._is_guest_quota_exhausted(guest_id)
+        user = await self._get_user_by_email(normalized_email)
+        existing_user = user is not None
+        requires_payment = (
+            user.analyses_used >= FREE_ANALYSIS_LIMIT
+            if user is not None
+            else await self._is_guest_quota_exhausted(guest_id)
+        )
         magic_link_key = self._magic_link_key(token)
         await self.redis.set(
             magic_link_key,
@@ -109,6 +116,7 @@ class AuthService:
                 MagicLinkPayload(
                     email=normalized_email,
                     requires_payment=requires_payment,
+                    existing_user=existing_user,
                 )
             ),
             ex=MAGIC_LINK_TTL_SECONDS,
@@ -149,9 +157,11 @@ class AuthService:
             raise InvalidMagicLinkToken
 
         user = await self._get_or_create_user(payload.email)
-        requires_payment = payload.requires_payment or await self._is_guest_quota_exhausted(
-            guest_id
-        )
+        requires_payment = payload.requires_payment
+        if not payload.existing_user:
+            requires_payment = requires_payment or await self._is_guest_quota_exhausted(
+                guest_id
+            )
         if requires_payment:
             await self._mark_user_free_quota_exhausted(user)
 
@@ -310,6 +320,7 @@ class AuthService:
             {
                 "email": payload.email,
                 "requires_payment": payload.requires_payment,
+                "existing_user": payload.existing_user,
             },
             separators=(",", ":"),
         )
@@ -331,6 +342,7 @@ class AuthService:
         return MagicLinkPayload(
             email=payload["email"],
             requires_payment=bool(payload.get("requires_payment")),
+            existing_user=bool(payload.get("existing_user")),
         )
 
     def _build_magic_link(self, token: UUID) -> str:
