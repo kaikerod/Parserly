@@ -9,7 +9,7 @@ O **Parserly** é um analisador de currículos focado em compatibilidade com ATS
 - 💡 **Sugestões Práticas**: Recomendações específicas para melhorar o conteúdo e formatação.
 - 🔐 **Magic Link**: Login simplificado e seguro via e-mail.
 - 💳 **Paywall Integrado**: Integração com Mercado Pago para análise de créditos extras.
-- 🕒 **Histórico**: Acesso rápido a todas as análises anteriores.
+- 🕒 **Persistência de análises**: As análises ficam salvas para acesso rápido ao histórico e consultas posteriores.
 
 ### 🛠️ Stack Tecnológica
 
@@ -76,7 +76,7 @@ As variáveis essenciais estão no arquivo `.env.example`. Não esqueça de conf
 - 💡 **Practical Suggestions**: Specific recommendations to improve content and formatting.
 - 🔐 **Magic Link**: Simplified and secure login via email.
 - 💳 **Integrated Paywall**: Integration with Mercado Pago for extra credit analysis.
-- 🕒 **History**: Quick access to all previous analyses.
+- 🕒 **Analysis persistence**: Analyses are saved for quick access to history and later review.
 
 ### 🛠️ Tech Stack
 
