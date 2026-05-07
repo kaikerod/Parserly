@@ -57,8 +57,8 @@ class EmailService:
         <div style="font-family: Arial, sans-serif; color: #17202a; line-height: 1.6;">
           <h1 style="font-size: 22px; margin: 0 0 16px;">Acesse sua conta Parserly</h1>
           <p style="margin: 0 0 20px;">
-            Use o botao abaixo para entrar com seguranca. O link expira em {minutes} minutos
-            e so pode ser usado uma vez.
+            Use o botão abaixo para entrar com segurança. O link expira em {minutes} minutos
+            e só pode ser usado uma vez.
           </p>
           <p style="margin: 0 0 24px;">
             <a
@@ -69,7 +69,7 @@ class EmailService:
             </a>
           </p>
           <p style="font-size: 13px; margin: 0 0 8px; color: #52616f;">
-            Se o botao nao funcionar, copie e cole este endereco no navegador:
+            Se o botão não funcionar, copie e cole este endereço no navegador:
           </p>
           <p style="font-size: 13px; margin: 0; word-break: break-all;">
             <a href="{safe_magic_link}" style="color: #3454d1;">{safe_magic_link}</a>
@@ -83,5 +83,5 @@ class EmailService:
         return (
             "Acesse sua conta Parserly\n\n"
             f"Use este link para entrar: {magic_link}\n\n"
-            f"O link expira em {minutes} minutos e so pode ser usado uma vez."
+            f"O link expira em {minutes} minutos e só pode ser usado uma vez."
         )
