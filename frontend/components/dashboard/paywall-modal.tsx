@@ -257,7 +257,7 @@ export function PaywallModal({
                 </div>
                 <div>
                   <p className="font-semibold text-paper">
-                    Você atingiu o limite de 3 análises gratuitas.
+                    Você atingiu o limite gratuito.
                   </p>
                   <p className="mt-2 text-sm leading-6 text-paper/60">
                     {hasPendingAnalysis

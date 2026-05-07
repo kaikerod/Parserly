@@ -54,7 +54,7 @@ PAYMENT_REQUIRED_MESSAGE = (
     "novas análises."
 )
 REGISTRATION_REQUIRED_MESSAGE = (
-    "Você atingiu o limite de 3 análises grátis. Cadastre-se para continuar."
+    "Você atingiu o limite gratuito. Cadastre-se para continuar."
 )
 
 
@@ -181,7 +181,7 @@ async def create_analysis(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail={
                 "error": "quota_exceeded",
-                "message": "Voce atingiu o limite de 3 analises gratuitas.",
+                "message": "Voce atingiu o limite gratuito.",
             },
         ) from exc
     except GuestQuotaExceeded as exc:
@@ -190,7 +190,7 @@ async def create_analysis(
             detail={
                 "error": "registration_required",
                 "message": (
-                    "Voce atingiu o limite de 3 analises gratis. "
+                    "Voce atingiu o limite gratuito. "
                     "Cadastre-se para continuar."
                 ),
                 "analyses_used": exc.analyses_used,

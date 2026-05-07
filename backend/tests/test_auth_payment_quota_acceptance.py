@@ -44,13 +44,15 @@ class GuestQuotaRedis:
         self.expirations[key] = ttl
 
 
-def test_guest_quota_reservation_blocks_fourth_analysis_and_rolls_back() -> None:
+def test_guest_quota_reservation_blocks_after_free_limit_and_rolls_back() -> None:
     redis = GuestQuotaRedis()
     guest_id = str(uuid4())
 
-    assert asyncio.run(reserve_guest_analysis(redis, guest_id)) == 1  # type: ignore[arg-type]
-    assert asyncio.run(reserve_guest_analysis(redis, guest_id)) == 2  # type: ignore[arg-type]
-    assert asyncio.run(reserve_guest_analysis(redis, guest_id)) == 3  # type: ignore[arg-type]
+    for expected_usage in range(1, FREE_ANALYSIS_LIMIT + 1):
+        reserved_usage = asyncio.run(
+            reserve_guest_analysis(redis, guest_id)  # type: ignore[arg-type]
+        )
+        assert reserved_usage == expected_usage
 
     with pytest.raises(GuestQuotaExceeded) as exc_info:
         asyncio.run(reserve_guest_analysis(redis, guest_id))  # type: ignore[arg-type]

@@ -45,13 +45,13 @@ const HISTORY_DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
 });
 
 const AUTHENTICATED_DASHBOARD_METRICS = [
-  { label: "Quota grátis", value: "3", detail: "análises por conta" },
+  { label: "Quota grátis", value: "Incluída", detail: "até o limite inicial" },
   { label: "Arquivos", value: "PDF/DOCX", detail: "até 5 MB" },
   { label: "Após limite", value: "PIX", detail: "checkout no modal" }
 ];
 
 const GUEST_DASHBOARD_METRICS = [
-  { label: "Sem cadastro", value: "3", detail: "análises grátis" },
+  { label: "Sem cadastro", value: "Teste grátis", detail: "até o limite inicial" },
   { label: "Arquivos", value: "PDF/DOCX", detail: "até 5 MB" },
   { label: "Após limite", value: "Cadastro", detail: "magic link por e-mail" }
 ];

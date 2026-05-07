@@ -34,7 +34,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
   const isRegistrationIntent = intentCode === "registration" || reasonCode === "free-limit";
   const initialNotice =
     isRegistrationIntent
-      ? "Você usou as 3 análises grátis. Cadastre seu e-mail para continuar pelo checkout PIX."
+      ? "Você atingiu o limite gratuito. Cadastre seu e-mail para continuar pelo checkout PIX."
       : undefined;
 
   return (
