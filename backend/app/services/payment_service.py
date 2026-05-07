@@ -255,10 +255,9 @@ class PaymentService:
         return WebhookProcessResult(status="ignored", billing_id=payment_id)
 
     async def _create_mercadopago_pix(self, user: User) -> PaymentCharge:
-        if not self.settings.mercadopago_access_token:
-            raise PaymentProviderUnavailable("O access token do Mercado Pago nao esta configurado.")
+        access_token = self._mercadopago_access_token()
 
-        if self._uses_unsupported_test_access_token():
+        if self._uses_unsupported_test_access_token(access_token):
             raise PaymentProviderUnavailable(
                 "O token TEST do Mercado Pago nao gera PIX neste fluxo. "
                 "Use credenciais de producao de uma conta vendedor de teste "
@@ -366,8 +365,7 @@ class PaymentService:
         )
 
     async def _fetch_mercadopago_payment(self, payment_id: str) -> dict[str, Any] | None:
-        if not self.settings.mercadopago_access_token:
-            raise PaymentProviderUnavailable("O access token do Mercado Pago nao esta configurado.")
+        self._mercadopago_access_token()
 
         async with httpx.AsyncClient(timeout=MERCADOPAGO_TIMEOUT) as client:
             try:
@@ -533,11 +531,17 @@ class PaymentService:
         return result.scalar_one_or_none()
 
     def _mercadopago_url(self, path: str) -> str:
-        return f"{self.settings.mercadopago_api_url.rstrip('/')}/{path.lstrip('/')}"
+        base_url = self.settings.mercadopago_api_url.strip()
+        if not base_url:
+            raise PaymentProviderUnavailable("A URL da API do Mercado Pago nao esta configurada.")
+        if "\r" in base_url or "\n" in base_url:
+            raise PaymentProviderUnavailable("A URL da API do Mercado Pago esta mal formatada.")
+
+        return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
     def _mercadopago_headers(self, *, idempotency_key: str | None = None) -> dict[str, str]:
         headers = {
-            "Authorization": f"Bearer {self.settings.mercadopago_access_token}",
+            "Authorization": f"Bearer {self._mercadopago_access_token()}",
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
@@ -545,8 +549,21 @@ class PaymentService:
             headers["X-Idempotency-Key"] = idempotency_key
         return headers
 
-    def _uses_unsupported_test_access_token(self) -> bool:
-        return self.settings.mercadopago_access_token.strip().upper().startswith("TEST-")
+    def _mercadopago_access_token(self) -> str:
+        access_token = self.settings.mercadopago_access_token.strip()
+        if not access_token:
+            raise PaymentProviderUnavailable("O access token do Mercado Pago nao esta configurado.")
+        if "\r" in access_token or "\n" in access_token:
+            raise PaymentProviderUnavailable(
+                "O access token do Mercado Pago esta mal formatado. "
+                "Remova quebras de linha da variavel MERCADOPAGO_ACCESS_TOKEN."
+            )
+
+        return access_token
+
+    def _uses_unsupported_test_access_token(self, access_token: str | None = None) -> bool:
+        token = access_token if access_token is not None else self._mercadopago_access_token()
+        return token.upper().startswith("TEST-")
 
     def _mercadopago_webhook_url(self) -> str | None:
         notification_url = f"{self.settings.api_public_url.rstrip('/')}/api/v1/payments/webhook"

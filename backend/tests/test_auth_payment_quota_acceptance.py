@@ -395,6 +395,32 @@ def test_mercadopago_create_charge_rejects_unsupported_test_access_token() -> No
     assert "token TEST" in exc_info.value.message
 
 
+def test_mercadopago_headers_strip_access_token_wrapping_whitespace() -> None:
+    service = PaymentService(
+        db_session=object(),  # type: ignore[arg-type]
+        redis_client=object(),  # type: ignore[arg-type]
+        settings=Settings(mercadopago_access_token="\r\nAPP_USR-test-token\n"),
+    )
+
+    headers = service._mercadopago_headers(idempotency_key="charge-idempotency-key")
+
+    assert headers["Authorization"] == "Bearer APP_USR-test-token"
+    assert headers["X-Idempotency-Key"] == "charge-idempotency-key"
+
+
+def test_mercadopago_headers_reject_internal_access_token_newline() -> None:
+    service = PaymentService(
+        db_session=object(),  # type: ignore[arg-type]
+        redis_client=object(),  # type: ignore[arg-type]
+        settings=Settings(mercadopago_access_token="APP_USR-test\ntoken"),
+    )
+
+    with pytest.raises(PaymentProviderUnavailable) as exc_info:
+        service._mercadopago_headers()
+
+    assert "mal formatado" in exc_info.value.message
+
+
 def test_mercadopago_create_charge_retries_transient_provider_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -451,7 +477,8 @@ def test_mercadopago_create_charge_retries_transient_provider_error(
         db_session=object(),  # type: ignore[arg-type]
         redis_client=object(),  # type: ignore[arg-type]
         settings=Settings(
-            mercadopago_access_token="APP_USR-test-token",
+            mercadopago_access_token="\r\nAPP_USR-test-token\n",
+            mercadopago_api_url=" https://api.mercadopago.test/ ",
             analysis_price_cents=1990,
         ),
     )
@@ -462,6 +489,8 @@ def test_mercadopago_create_charge_retries_transient_provider_error(
     assert charge.billing_id == "123456"
     assert charge.pix_copy_paste == "000201PIX"
     assert len(sent_requests) == 2
+    assert sent_requests[0]["url"] == "https://api.mercadopago.test/v1/payments"
+    assert sent_requests[0]["headers"]["Authorization"] == "Bearer APP_USR-test-token"
     assert sent_requests[0]["headers"] == sent_requests[1]["headers"]
     assert sent_requests[0]["json"] == sent_requests[1]["json"]
 

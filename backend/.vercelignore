@@ -1,0 +1,12 @@
+.pytest-tmp
+.pytest-tmp/**
+pytest-cache-files-*
+pytest-cache-files-*/**
+pytest_tmp
+pytest_tmp/**
+test_runtime
+test_runtime/**
+__pycache__
+__pycache__/**
+.pytest_cache
+.pytest_cache/**
