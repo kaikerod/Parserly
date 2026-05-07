@@ -421,6 +421,35 @@ def test_mercadopago_headers_reject_internal_access_token_newline() -> None:
     assert "mal formatado" in exc_info.value.message
 
 
+def test_mercadopago_pix_key_missing_error_returns_actionable_message() -> None:
+    request = httpx.Request("POST", "https://api.mercadopago.com/v1/payments")
+    response = httpx.Response(
+        400,
+        json={
+            "error": "bad_request",
+            "message": "Collector user without key enabled for QR rendernull",
+            "status": 400,
+            "cause": [
+                {
+                    "code": 13253,
+                    "description": "Error in Financial Identity Use Case",
+                }
+            ],
+        },
+        request=request,
+    )
+    error = httpx.HTTPStatusError(
+        "Mercado Pago returned non-retryable status",
+        request=request,
+        response=response,
+    )
+
+    message = PaymentService._mercadopago_user_message(error)
+
+    assert "chave Pix" in message
+    assert "conta vendedora com Pix habilitado" in message
+
+
 def test_mercadopago_create_charge_retries_transient_provider_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -680,6 +680,12 @@ class PaymentService:
                 return "Mercado Pago retornou erro temporario ao gerar a cobranca PIX. Tente novamente em instantes."
 
             provider_error = PaymentService._mercadopago_error_value(exc.response)
+            if PaymentService._is_mercadopago_pix_key_missing_error(exc.response):
+                return (
+                    "O PIX do Mercado Pago nao esta habilitado para a conta recebedora. "
+                    "Cadastre e ative uma chave Pix nessa conta ou use o access token "
+                    "de uma conta vendedora com Pix habilitado."
+                )
             if provider_error:
                 return f"Mercado Pago recusou a cobranca PIX: {provider_error}"
 
@@ -710,6 +716,43 @@ class PaymentService:
                     return item["description"]
 
         return None
+
+    @staticmethod
+    def _is_mercadopago_pix_key_missing_error(response: httpx.Response) -> bool:
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            return False
+
+        if not isinstance(payload, dict):
+            return False
+
+        message = payload.get("message")
+        if (
+            isinstance(message, str)
+            and "collector user without key enabled for qr render" in message.lower()
+        ):
+            return True
+
+        cause = payload.get("cause")
+        if not isinstance(cause, list):
+            return False
+
+        for item in cause:
+            if not isinstance(item, dict):
+                continue
+
+            if item.get("code") == 13253:
+                return True
+
+            description = item.get("description")
+            if (
+                isinstance(description, str)
+                and "collector user without key enabled for qr render" in description.lower()
+            ):
+                return True
+
+        return False
 
     @staticmethod
     def _mercadopago_response_summary(response: httpx.Response) -> str:
