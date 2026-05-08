@@ -2,6 +2,36 @@ from app.core.config import Settings
 from app.core.database import prepare_asyncpg_connection
 
 
+def test_settings_uses_canonical_api_url_for_vercel_production_default() -> None:
+    settings = Settings(
+        vercel=True,
+        vercel_env="production",
+        api_public_url="http://localhost:8000",
+    )
+
+    assert settings.api_public_url == "https://parserly-api.vercel.app"
+
+
+def test_settings_replaces_immutable_vercel_api_url_in_production() -> None:
+    settings = Settings(
+        vercel=True,
+        vercel_env="production",
+        api_public_url="https://parserly-d74qu5cdo-kaikerods-projects.vercel.app",
+    )
+
+    assert settings.api_public_url == "https://parserly-api.vercel.app"
+
+
+def test_settings_keeps_custom_api_public_url_for_vercel_production() -> None:
+    settings = Settings(
+        vercel=True,
+        vercel_env="production",
+        api_public_url="https://api.parserly.com.br",
+    )
+
+    assert settings.api_public_url == "https://api.parserly.com.br"
+
+
 def test_settings_normalizes_postgres_scheme_without_rewriting_sslmode() -> None:
     settings = Settings(
         database_url="postgres://user:pass@example.com/db?sslmode=require",

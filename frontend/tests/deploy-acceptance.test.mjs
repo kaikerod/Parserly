@@ -6,10 +6,44 @@ import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 
-async function importNextConfig(apiBaseUrl = "https://api.preview.example.com/") {
-  process.env.API_BASE_URL = apiBaseUrl;
+async function importNextConfig(options = {}) {
+  const normalizedOptions =
+    typeof options === "string" ? { apiBaseUrl: options } : options;
+  const hasApiBaseUrl = Object.hasOwn(normalizedOptions, "apiBaseUrl");
+  const apiBaseUrl = hasApiBaseUrl
+    ? normalizedOptions.apiBaseUrl
+    : "https://api.preview.example.com/";
+  const { vercelEnv } = normalizedOptions;
+  const previousApiBaseUrl = process.env.API_BASE_URL;
+  const previousVercelEnv = process.env.VERCEL_ENV;
+
+  if (apiBaseUrl === undefined) {
+    delete process.env.API_BASE_URL;
+  } else {
+    process.env.API_BASE_URL = apiBaseUrl;
+  }
+
+  if (vercelEnv === undefined) {
+    delete process.env.VERCEL_ENV;
+  } else {
+    process.env.VERCEL_ENV = vercelEnv;
+  }
+
   const configUrl = pathToFileURL(path.join(root, "next.config.mjs"));
-  return import(`${configUrl.href}?acceptance=${Date.now()}${Math.random()}`);
+  try {
+    return await import(`${configUrl.href}?acceptance=${Date.now()}${Math.random()}`);
+  } finally {
+    restoreEnv("API_BASE_URL", previousApiBaseUrl);
+    restoreEnv("VERCEL_ENV", previousVercelEnv);
+  }
+}
+
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
 }
 
 async function readSource(relativePath) {
@@ -24,6 +58,36 @@ test("rewrites keep frontend API calls on the deployed FastAPI project", async (
     {
       source: "/api/v1/:path*",
       destination: "https://api.preview.example.com/api/v1/:path*"
+    }
+  ]);
+});
+
+test("production rewrites use the canonical API alias instead of immutable deployment URLs", async () => {
+  const { default: nextConfig } = await importNextConfig({
+    apiBaseUrl: "https://parserly-d74qu5cdo-kaikerods-projects.vercel.app",
+    vercelEnv: "production"
+  });
+  const rewrites = await nextConfig.rewrites();
+
+  assert.deepEqual(rewrites, [
+    {
+      source: "/api/v1/:path*",
+      destination: "https://parserly-api.vercel.app/api/v1/:path*"
+    }
+  ]);
+});
+
+test("production rewrites default to the canonical API alias on Vercel", async () => {
+  const { default: nextConfig } = await importNextConfig({
+    apiBaseUrl: undefined,
+    vercelEnv: "production"
+  });
+  const rewrites = await nextConfig.rewrites();
+
+  assert.deepEqual(rewrites, [
+    {
+      source: "/api/v1/:path*",
+      destination: "https://parserly-api.vercel.app/api/v1/:path*"
     }
   ]);
 });

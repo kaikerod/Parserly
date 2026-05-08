@@ -25,9 +25,13 @@ from app.core.quotas import (
     GUEST_ANALYSIS_COOKIE_MAX_AGE_SECONDS,
     GUEST_ANALYSIS_COOKIE_NAME,
     GUEST_ANALYSIS_KEY_TTL_SECONDS,
+    get_free_analyses_remaining,
     get_guest_analyses_used,
+    get_user_remaining_analyses,
     guest_analysis_key,
+    normalize_analysis_count,
     normalize_guest_id,
+    user_requires_payment,
 )
 from app.core.redis import get_redis_client
 from app.core.security import get_current_user, get_optional_current_user
@@ -105,7 +109,7 @@ async def get_analysis_quota(
     if current_user is None:
         guest_id = normalize_guest_id(request.cookies.get(GUEST_ANALYSIS_COOKIE_NAME))
         analyses_used = await get_guest_analyses_used(redis_client, guest_id)
-        remaining_analyses = max(0, FREE_ANALYSIS_LIMIT - analyses_used)
+        remaining_analyses = get_free_analyses_remaining(analyses_used)
         registration_required = remaining_analyses == 0
         return AnalysisQuotaResponse(
             authenticated=False,
@@ -115,9 +119,8 @@ async def get_analysis_quota(
             message=REGISTRATION_REQUIRED_MESSAGE if registration_required else None,
         )
 
-    analyses_used = normalize_analyses_used(current_user.analyses_used)
-    remaining_analyses = max(0, FREE_ANALYSIS_LIMIT - analyses_used)
-    payment_required = remaining_analyses == 0
+    remaining_analyses = get_user_remaining_analyses(current_user)
+    payment_required = user_requires_payment(current_user)
     return AnalysisQuotaResponse(
         authenticated=True,
         remaining_analyses=remaining_analyses,
@@ -243,10 +246,7 @@ class GuestQuotaExceeded(Exception):
 
 
 def normalize_analyses_used(raw_analyses_used: object) -> int:
-    try:
-        return int(raw_analyses_used or 0)
-    except (TypeError, ValueError):
-        return 0
+    return normalize_analysis_count(raw_analyses_used)
 
 
 def get_or_create_guest_id(request: Request) -> str:

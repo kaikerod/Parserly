@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:8000";
+const LOCAL_API_BASE_URL = "http://localhost:8000";
+const CANONICAL_API_BASE_URL = "https://parserly-api.vercel.app";
+const API_BASE_URL = resolveApiBaseUrl();
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +73,39 @@ function redirectToLogin(request: NextRequest, reason: string) {
 
 function normalizedApiBaseUrl() {
   return API_BASE_URL.replace(/\/$/, "");
+}
+
+function resolveApiBaseUrl() {
+  const configuredApiBaseUrl = process.env.API_BASE_URL?.trim();
+  const normalizedApiBaseUrl = (configuredApiBaseUrl || defaultApiBaseUrl()).replace(/\/$/, "");
+
+  if (
+    process.env.VERCEL_ENV === "production" &&
+    isParserlyImmutableDeploymentUrl(normalizedApiBaseUrl)
+  ) {
+    return CANONICAL_API_BASE_URL;
+  }
+
+  return normalizedApiBaseUrl;
+}
+
+function defaultApiBaseUrl() {
+  return process.env.VERCEL_ENV === "production" ? CANONICAL_API_BASE_URL : LOCAL_API_BASE_URL;
+}
+
+function isParserlyImmutableDeploymentUrl(url: string) {
+  if (!url.startsWith("https://parserly-")) {
+    return false;
+  }
+
+  if (!url.endsWith("-kaikerods-projects.vercel.app")) {
+    return false;
+  }
+
+  const deploymentId = url
+    .replace("https://parserly-", "")
+    .replace("-kaikerods-projects.vercel.app", "");
+  return /^[a-z0-9]+$/.test(deploymentId);
 }
 
 function isInvalidMagicLinkStatus(statusCode: number) {

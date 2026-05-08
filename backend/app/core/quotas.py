@@ -37,5 +37,29 @@ async def get_guest_analyses_used(redis_client: Redis, guest_id: str | None) -> 
         return 0
 
 
+def normalize_analysis_count(raw_value: object) -> int:
+    try:
+        return max(0, int(raw_value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def get_free_analyses_remaining(raw_analyses_used: object) -> int:
+    return max(0, FREE_ANALYSIS_LIMIT - normalize_analysis_count(raw_analyses_used))
+
+
+def get_paid_analysis_credits(user: object) -> int:
+    return normalize_analysis_count(getattr(user, "paid_analysis_credits", 0))
+
+
+def get_user_remaining_analyses(user: object) -> int:
+    analyses_used = getattr(user, "analyses_used", 0)
+    return get_free_analyses_remaining(analyses_used) + get_paid_analysis_credits(user)
+
+
+def user_requires_payment(user: object) -> bool:
+    return get_user_remaining_analyses(user) == 0
+
+
 def guest_analysis_key(guest_id: str) -> str:
     return f"analysis:guest:{guest_id}:used"

@@ -25,6 +25,11 @@ class User(Base):
         nullable=False,
         server_default=text("0"),
     )
+    paid_analysis_credits: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
     suspicious: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

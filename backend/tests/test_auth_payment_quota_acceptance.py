@@ -23,6 +23,7 @@ from app.services.payment_service import (
     PaymentCharge,
     PaymentProviderUnavailable,
     PaymentService,
+    PAID_ANALYSIS_CREDITS,
     WebhookProcessResult,
 )
 
@@ -253,6 +254,24 @@ def test_existing_user_magic_link_requires_payment_when_user_quota_is_exhausted(
     result = asyncio.run(service.request_magic_link("person@example.com"))
 
     assert result.requires_payment is True
+
+
+def test_existing_user_magic_link_accepts_paid_credits_after_free_quota() -> None:
+    user = SimpleNamespace(
+        id=uuid4(),
+        email="person@example.com",
+        analyses_used=FREE_ANALYSIS_LIMIT,
+        paid_analysis_credits=3,
+    )
+    service = FakeAuthService(
+        MagicLinkRedis(),
+        existing_user=user,
+        guest_quota_exhausted=False,
+    )
+
+    result = asyncio.run(service.request_magic_link("person@example.com"))
+
+    assert result.requires_payment is False
 
 
 def test_new_user_magic_link_preserves_exhausted_guest_quota() -> None:
@@ -620,3 +639,68 @@ def test_payment_webhook_rejects_invalid_payload_and_ignores_missing_payment_id(
 
     assert result.status == "ignored"
     assert service.calls == []
+
+
+class ScalarResult:
+    def __init__(self, value: object | None = None) -> None:
+        self.value = value
+
+    def scalar_one_or_none(self) -> object | None:
+        return self.value
+
+
+class PaidWebhookDbSession:
+    def __init__(self, payment_user_id: UUID) -> None:
+        self.payment_user_id = payment_user_id
+        self.statements: list[object] = []
+        self.committed = False
+        self.rolled_back = False
+
+    async def execute(self, statement: object) -> ScalarResult:
+        self.statements.append(statement)
+        if len(self.statements) == 1:
+            return ScalarResult(self.payment_user_id)
+        return ScalarResult()
+
+    async def commit(self) -> None:
+        self.committed = True
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
+
+
+class PublishingRedis:
+    def __init__(self) -> None:
+        self.messages: list[tuple[str, dict[str, object]]] = []
+
+    async def publish(self, channel: str, message: str) -> None:
+        self.messages.append((channel, json.loads(message)))
+
+
+def test_paid_webhook_adds_paid_analysis_credits_and_publishes_unlock() -> None:
+    user_id = uuid4()
+    db_session = PaidWebhookDbSession(user_id)
+    redis = PublishingRedis()
+    service = PaymentService(
+        db_session=db_session,  # type: ignore[arg-type]
+        redis_client=redis,  # type: ignore[arg-type]
+        settings=Settings(),
+    )
+
+    result = asyncio.run(service._process_paid_event("123456", payload_user_id=user_id))
+
+    assert result.status == "processed"
+    assert db_session.committed is True
+    assert db_session.rolled_back is False
+    assert len(db_session.statements) == 2
+    assert "paid_analysis_credits" in str(db_session.statements[1])
+    assert redis.messages == [
+        (
+            f"analysis_unlocked:{user_id}",
+            {
+                "event": "payment_confirmed",
+                "user_id": str(user_id),
+                "analysis_credits": PAID_ANALYSIS_CREDITS,
+            },
+        )
+    ]

@@ -444,7 +444,7 @@ class PaymentService:
             update(User)
             .where(User.id == payment_user_id)
             .values(
-                analyses_used=User.analyses_used - PAID_ANALYSIS_CREDITS,
+                paid_analysis_credits=User.paid_analysis_credits + PAID_ANALYSIS_CREDITS,
                 updated_at=func.now(),
             )
         )

@@ -14,12 +14,16 @@ from uuid import UUID
 import httpx
 from fastapi import UploadFile
 from pydantic import ValidationError
-from sqlalchemy import func, update
+from sqlalchemy import case, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.observability import log_structured
-from app.core.quotas import FREE_ANALYSIS_LIMIT
+from app.core.quotas import (
+    FREE_ANALYSIS_LIMIT,
+    get_user_remaining_analyses,
+    normalize_analysis_count,
+)
 from app.models.analysis import Analysis
 from app.models.user import User
 from app.schemas.analysis import AnalysisReport
@@ -299,7 +303,7 @@ class AnalysisService:
     ) -> PersistedAnalysisResult:
         if user is not None:
             await self.db_session.refresh(user)
-            if user.analyses_used >= FREE_ANALYSIS_LIMIT:
+            if get_user_remaining_analyses(user) == 0:
                 raise QuotaExceeded
 
         temp_path: Path | None = None
@@ -900,19 +904,39 @@ class AnalysisService:
         if user is None:
             analyses_used = guest_analyses_used or 0
         else:
-            increment_result = await self.db_session.execute(
+            consume_result = await self.db_session.execute(
                 update(User)
-                .where(User.id == user.id, User.analyses_used < FREE_ANALYSIS_LIMIT)
+                .where(
+                    User.id == user.id,
+                    or_(
+                        User.analyses_used < FREE_ANALYSIS_LIMIT,
+                        User.paid_analysis_credits > 0,
+                    ),
+                )
                 .values(
-                    analyses_used=User.analyses_used + 1,
+                    analyses_used=case(
+                        (
+                            User.analyses_used < FREE_ANALYSIS_LIMIT,
+                            User.analyses_used + 1,
+                        ),
+                        else_=User.analyses_used,
+                    ),
+                    paid_analysis_credits=case(
+                        (
+                            User.analyses_used >= FREE_ANALYSIS_LIMIT,
+                            User.paid_analysis_credits - 1,
+                        ),
+                        else_=User.paid_analysis_credits,
+                    ),
                     updated_at=func.now(),
                 )
-                .returning(User.analyses_used)
+                .returning(User.analyses_used, User.paid_analysis_credits)
             )
-            analyses_used = increment_result.scalar_one_or_none()
-            if analyses_used is None:
+            usage_row = consume_result.one_or_none()
+            if usage_row is None:
                 await self.db_session.rollback()
                 raise QuotaExceeded
+            analyses_used = normalize_analysis_count(usage_row[0])
 
         try:
             await self.db_session.commit()
@@ -928,5 +952,5 @@ class AnalysisService:
             report=ai_result.report,
             model_used=analysis.model_used,
             created_at=analysis.created_at,
-            analyses_used=max(0, analyses_used),
+            analyses_used=normalize_analysis_count(analyses_used),
         )

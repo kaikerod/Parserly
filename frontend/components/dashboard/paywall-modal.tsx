@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   X
 } from "lucide-react";
-import { apiPath, createPixCharge } from "@/lib/api";
+import { apiPath, createPixCharge, getAnalysisQuota } from "@/lib/api";
 import type { CreateChargeResponse, PaymentStreamEvent } from "@/types/payment";
 
 type PaywallPhase = "idle" | "creating" | "waiting" | "confirmed" | "expired" | "error";
@@ -56,6 +56,19 @@ export function PaywallModal({
     confirmedRef.current = false;
     expirationNotifiedRef.current = false;
   }, []);
+
+  const completePaymentConfirmation = useCallback(() => {
+    if (confirmedRef.current) {
+      return;
+    }
+
+    confirmedRef.current = true;
+    setPhase("confirmed");
+    window.setTimeout(() => {
+      resetPaymentState();
+      onPaymentConfirmed();
+    }, 350);
+  }, [onPaymentConfirmed, resetPaymentState]);
 
   const markChargeExpired = useCallback(() => {
     setPhase("expired");
@@ -150,13 +163,8 @@ export function PaywallModal({
       const payload = parsePaymentEvent(rawData);
       const eventName = payload?.event ?? fallbackEvent;
 
-      if (eventName === "payment_confirmed" && !confirmedRef.current) {
-        confirmedRef.current = true;
-        setPhase("confirmed");
-        window.setTimeout(() => {
-          resetPaymentState();
-          onPaymentConfirmed();
-        }, 350);
+      if (eventName === "payment_confirmed") {
+        completePaymentConfirmation();
       }
 
       if (eventName === "payment_expired") {
@@ -178,7 +186,41 @@ export function PaywallModal({
     };
 
     return () => eventSource.close();
-  }, [charge, markChargeExpired, onPaymentConfirmed, phase, resetPaymentState]);
+  }, [charge, completePaymentConfirmation, markChargeExpired, phase]);
+
+  useEffect(() => {
+    if (!charge || phase !== "waiting") {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function verifyUnlockedQuota() {
+      try {
+        const quota = await getAnalysisQuota();
+        if (
+          !cancelled &&
+          quota.authenticated &&
+          !quota.payment_required &&
+          quota.remaining_analyses > 0
+        ) {
+          completePaymentConfirmation();
+        }
+      } catch {
+        // SSE remains the primary confirmation path; polling only covers missed events.
+      }
+    }
+
+    void verifyUnlockedQuota();
+    const interval = window.setInterval(() => {
+      void verifyUnlockedQuota();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [charge, completePaymentConfirmation, phase]);
 
   async function handleCreateCharge() {
     setPhase("creating");

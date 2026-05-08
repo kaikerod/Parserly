@@ -14,7 +14,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.quotas import FREE_ANALYSIS_LIMIT, get_guest_analyses_used
+from app.core.quotas import (
+    FREE_ANALYSIS_LIMIT,
+    get_guest_analyses_used,
+    user_requires_payment,
+)
 from app.models.user import User
 from app.services.email_service import EmailDeliveryError, EmailService
 
@@ -105,7 +109,7 @@ class AuthService:
         user = await self._get_user_by_email(normalized_email)
         existing_user = user is not None
         requires_payment = (
-            user.analyses_used >= FREE_ANALYSIS_LIMIT
+            user_requires_payment(user)
             if user is not None
             else await self._is_guest_quota_exhausted(guest_id)
         )

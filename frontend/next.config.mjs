@@ -1,5 +1,39 @@
 const LOCAL_API_BASE_URL = "http://localhost:8000";
-const apiBaseUrl = (process.env.API_BASE_URL ?? LOCAL_API_BASE_URL).replace(/\/$/, "");
+const CANONICAL_API_BASE_URL = "https://parserly-api.vercel.app";
+const apiBaseUrl = resolveApiBaseUrl();
+
+function resolveApiBaseUrl() {
+  const configuredApiBaseUrl = process.env.API_BASE_URL?.trim();
+  const normalizedApiBaseUrl = (configuredApiBaseUrl || defaultApiBaseUrl()).replace(/\/$/, "");
+
+  if (
+    process.env.VERCEL_ENV === "production" &&
+    isParserlyImmutableDeploymentUrl(normalizedApiBaseUrl)
+  ) {
+    return CANONICAL_API_BASE_URL;
+  }
+
+  return normalizedApiBaseUrl;
+}
+
+function defaultApiBaseUrl() {
+  return process.env.VERCEL_ENV === "production" ? CANONICAL_API_BASE_URL : LOCAL_API_BASE_URL;
+}
+
+function isParserlyImmutableDeploymentUrl(url) {
+  if (!url.startsWith("https://parserly-")) {
+    return false;
+  }
+
+  if (!url.endsWith("-kaikerods-projects.vercel.app")) {
+    return false;
+  }
+
+  const deploymentId = url
+    .replace("https://parserly-", "")
+    .replace("-kaikerods-projects.vercel.app", "");
+  return /^[a-z0-9]+$/.test(deploymentId);
+}
 
 const immutableAssetCacheHeaders = [
   {

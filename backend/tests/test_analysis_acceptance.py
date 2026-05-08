@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -12,8 +15,11 @@ from fastapi import UploadFile
 from starlette.datastructures import Headers
 
 from app.core.config import Settings
+from app.core.quotas import FREE_ANALYSIS_LIMIT
+from app.schemas.analysis import AnalysisReport
 from app.services import analysis_service as analysis_module
 from app.services.analysis_service import (
+    AIAnalysisResult,
     AIAnalysisUnavailable,
     AnalysisService,
     InvalidResumeFile,
@@ -346,6 +352,70 @@ def test_openrouter_timeout_exhausts_attempt_budget(
 
     with pytest.raises(AIAnalysisUnavailable):
         asyncio.run(service._run_openrouter_attempts(RESUME_TEXT))
+
+
+class PersistResult:
+    def __init__(self, row: tuple[int, int]) -> None:
+        self.row = row
+
+    def one_or_none(self) -> tuple[int, int]:
+        return self.row
+
+
+class PersistDbSession:
+    def __init__(self, row: tuple[int, int]) -> None:
+        self.row = row
+        self.statements: list[object] = []
+        self.committed = False
+        self.rolled_back = False
+
+    def add(self, instance: object) -> None:
+        self.added = instance
+
+    async def execute(self, statement: object) -> PersistResult:
+        self.statements.append(statement)
+        return PersistResult(self.row)
+
+    async def commit(self) -> None:
+        self.committed = True
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
+
+    async def refresh(self, instance: object) -> None:
+        instance.id = uuid4()
+        instance.created_at = datetime(2026, 5, 7, 12, 0, tzinfo=UTC)
+
+
+def test_persist_analysis_consumes_paid_credit_after_free_quota(runtime_dir: Path) -> None:
+    db_session = PersistDbSession((FREE_ANALYSIS_LIMIT, 9))
+    service = AnalysisService(
+        db_session=db_session,  # type: ignore[arg-type]
+        settings=Settings(environment="test", upload_tmp_dir=str(runtime_dir)),
+    )
+    user = SimpleNamespace(
+        id=uuid4(),
+        analyses_used=FREE_ANALYSIS_LIMIT,
+        paid_analysis_credits=10,
+    )
+    ai_result = AIAnalysisResult(
+        report=AnalysisReport.model_validate(VALID_REPORT),
+        model_used="test-model",
+    )
+
+    result = asyncio.run(
+        service._persist_analysis(
+            user=user,  # type: ignore[arg-type]
+            filename="resume.pdf",
+            ai_result=ai_result,
+            guest_analyses_used=None,
+        )
+    )
+
+    assert result.analyses_used == FREE_ANALYSIS_LIMIT
+    assert db_session.committed is True
+    assert db_session.rolled_back is False
+    assert "paid_analysis_credits" in str(db_session.statements[0])
 
 
 def openrouter_response(content: str) -> httpx.Response:
