@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -124,8 +124,56 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
   const [activeNavigationDetail, setActiveNavigationDetail] = useState(NAVIGATION_DETAILS[0]);
   const [error, setError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
+  const navigationRef = useRef<HTMLDivElement | null>(null);
   const ActiveNavigationIcon = activeNavigationDetail.icon;
   const paymentActionLabel = hasPendingPixCharge ? "Reabrir QR Code PIX" : "Abrir pagamento PIX";
+
+  useEffect(() => {
+    const navigationElement = navigationRef.current;
+
+    if (!navigationElement) {
+      return;
+    }
+
+    let animationFrameId = 0;
+    let lastTimestamp = 0;
+    let direction = 1;
+    const pixelsPerSecond = 28;
+
+    const animate = (timestamp: number) => {
+      if (lastTimestamp === 0) {
+        lastTimestamp = timestamp;
+      }
+
+      const maxScrollLeft = navigationElement.scrollWidth - navigationElement.clientWidth;
+
+      if (maxScrollLeft <= 0) {
+        animationFrameId = window.requestAnimationFrame(animate);
+        return;
+      }
+
+      const delta = ((timestamp - lastTimestamp) / 1000) * pixelsPerSecond;
+      lastTimestamp = timestamp;
+
+      navigationElement.scrollLeft += delta * direction;
+
+      if (navigationElement.scrollLeft >= maxScrollLeft) {
+        navigationElement.scrollLeft = maxScrollLeft;
+        direction = -1;
+      } else if (navigationElement.scrollLeft <= 0) {
+        navigationElement.scrollLeft = 0;
+        direction = 1;
+      }
+
+      animationFrameId = window.requestAnimationFrame(animate);
+    };
+
+    animationFrameId = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
 
   const loadAnalysisHistory = useCallback(async () => {
     if (!isAuthenticated) {
@@ -312,13 +360,17 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
             </div>
           </div>
 
-          <div className="hidden items-center gap-2 md:flex" aria-label="Navegação principal">
+          <div
+            ref={navigationRef}
+            className="hidden max-w-full items-center gap-2 overflow-x-auto [scrollbar-width:none] md:flex"
+            aria-label="Navegação principal"
+          >
             {NAVIGATION_DETAILS.map((item) => (
               <button
                 key={item.label}
                 type="button"
                 onClick={() => setActiveNavigationDetail(item)}
-                className={`focus-ring rounded-md px-3 py-2 text-xs font-semibold transition ${
+                className={`focus-ring shrink-0 rounded-md px-3 py-2 text-xs font-semibold transition ${
                   activeNavigationDetail.label === item.label
                     ? "bg-paper text-ink"
                     : "text-paper/60 hover:bg-fog hover:text-paper"
