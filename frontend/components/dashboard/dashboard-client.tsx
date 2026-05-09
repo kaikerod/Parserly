@@ -134,7 +134,7 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
         const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % NAVIGATION_DETAILS.length;
         return NAVIGATION_DETAILS[nextIndex];
       });
-    }, 3000);
+    }, 7000);
 
     return () => {
       window.clearInterval(rotationInterval);
