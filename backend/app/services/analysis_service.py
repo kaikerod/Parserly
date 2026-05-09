@@ -969,7 +969,8 @@ class AnalysisService:
                 ),
                 updated_at=func.now(),
             )
-            .returning(User.analyses_used)
+            .returning(User.analyses_used, User.paid_analysis_credits)
+            .execution_options(synchronize_session=False)
         )
         usage_row = reserve_result.one_or_none()
         if usage_row is None:
@@ -983,12 +984,9 @@ class AnalysisService:
             raise
 
         analyses_used = normalize_analysis_count(usage_row[0])
+        paid_analysis_credits = normalize_analysis_count(usage_row[1])
         user.analyses_used = analyses_used
-        if consumed_paid_credit:
-            user.paid_analysis_credits = max(
-                0,
-                normalize_analysis_count(user.paid_analysis_credits) - 1,
-            )
+        user.paid_analysis_credits = paid_analysis_credits
 
         return UserAnalysisReservation(
             analyses_used=analyses_used,

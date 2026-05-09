@@ -356,15 +356,15 @@ def test_openrouter_timeout_exhausts_attempt_budget(
 
 
 class PersistResult:
-    def __init__(self, row: tuple[int, int]) -> None:
+    def __init__(self, row: tuple[int, ...]) -> None:
         self.row = row
 
-    def one_or_none(self) -> tuple[int, int]:
+    def one_or_none(self) -> tuple[int, ...]:
         return self.row
 
 
 class PersistDbSession:
-    def __init__(self, row: tuple[int, int]) -> None:
+    def __init__(self, row: tuple[int, ...]) -> None:
         self.row = row
         self.statements: list[object] = []
         self.committed = False
@@ -389,7 +389,7 @@ class PersistDbSession:
 
 
 class ReserveDbSession:
-    def __init__(self, row: tuple[int]) -> None:
+    def __init__(self, row: tuple[int, ...]) -> None:
         self.row = row
         self.statements: list[object] = []
         self.committed = False
@@ -409,19 +409,33 @@ class ReserveDbSession:
         self.rolled_back = True
 
 
+class UserWithExpiredCreditsAfterCommit:
+    def __init__(self, db_session: ReserveDbSession) -> None:
+        self.id = uuid4()
+        self.analyses_used = FREE_ANALYSIS_LIMIT
+        self._paid_analysis_credits = 10
+        self._db_session = db_session
+
+    @property
+    def paid_analysis_credits(self) -> int:
+        if self._db_session.committed:
+            raise AssertionError("paid_analysis_credits was read after commit")
+        return self._paid_analysis_credits
+
+    @paid_analysis_credits.setter
+    def paid_analysis_credits(self, value: int) -> None:
+        self._paid_analysis_credits = value
+
+
 def test_reserve_user_analysis_consumes_paid_credit_after_free_quota(
     runtime_dir: Path,
 ) -> None:
-    db_session = ReserveDbSession((FREE_ANALYSIS_LIMIT,))
+    db_session = ReserveDbSession((FREE_ANALYSIS_LIMIT, 9))
     service = AnalysisService(
         db_session=db_session,  # type: ignore[arg-type]
         settings=Settings(environment="test", upload_tmp_dir=str(runtime_dir)),
     )
-    user = SimpleNamespace(
-        id=uuid4(),
-        analyses_used=FREE_ANALYSIS_LIMIT,
-        paid_analysis_credits=10,
-    )
+    user = UserWithExpiredCreditsAfterCommit(db_session)
 
     reservation = asyncio.run(service._reserve_user_analysis(user))  # type: ignore[arg-type]
 
@@ -429,7 +443,7 @@ def test_reserve_user_analysis_consumes_paid_credit_after_free_quota(
         analyses_used=FREE_ANALYSIS_LIMIT,
         consumed_paid_credit=True,
     )
-    assert user.paid_analysis_credits == 9
+    assert user._paid_analysis_credits == 9
     assert db_session.committed is True
     assert db_session.rolled_back is False
     assert "paid_analysis_credits" in str(db_session.statements[0])
