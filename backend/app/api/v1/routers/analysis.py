@@ -33,6 +33,15 @@ from app.core.quotas import (
     normalize_guest_id,
     user_requires_payment,
 )
+from app.core.rate_limit import (
+    ConcurrentRequestLimitExceeded,
+    RateLimitExceeded,
+    acquire_concurrency_slot,
+    client_ip_from_request,
+    enforce_rate_limit,
+    release_concurrency_slot,
+    retry_after_headers,
+)
 from app.core.redis import get_redis_client
 from app.core.security import get_current_user, get_optional_current_user
 from app.models.analysis import Analysis
@@ -52,6 +61,10 @@ from app.services.analysis_service import (
 )
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
+ANALYSIS_RATE_LIMIT_SECONDS = 60 * 60
+AUTH_ANALYSIS_RATE_LIMIT_MAX_REQUESTS = 10
+GUEST_ANALYSIS_IP_RATE_LIMIT_MAX_REQUESTS = 5
+ANALYSIS_CONCURRENCY_TTL_SECONDS = 90
 
 PAYMENT_REQUIRED_MESSAGE = (
     "Você atingiu o limite de análises gratuitas. Pague via PIX para liberar "
@@ -167,12 +180,40 @@ async def create_analysis(
 ) -> AnalysisResponse:
     guest_id: str | None = None
     guest_analyses_used: int | None = None
+    concurrency_key: str | None = None
 
     try:
         if current_user is None:
             guest_id = get_or_create_guest_id(request)
+            await enforce_analysis_rate_limits(
+                request=request,
+                redis_client=redis_client,
+                scope="guest",
+                identifier=client_ip_from_request(request),
+                max_requests=GUEST_ANALYSIS_IP_RATE_LIMIT_MAX_REQUESTS,
+            )
+            concurrency_key = await acquire_concurrency_slot(
+                redis_client,
+                scope="analysis:create",
+                identifier=f"guest:{client_ip_from_request(request)}",
+                ttl_seconds=ANALYSIS_CONCURRENCY_TTL_SECONDS,
+            )
             set_guest_analysis_cookie(response, guest_id, settings)
             guest_analyses_used = await reserve_guest_analysis(redis_client, guest_id)
+        else:
+            await enforce_analysis_rate_limits(
+                request=request,
+                redis_client=redis_client,
+                scope="user",
+                identifier=str(current_user.id),
+                max_requests=AUTH_ANALYSIS_RATE_LIMIT_MAX_REQUESTS,
+            )
+            concurrency_key = await acquire_concurrency_slot(
+                redis_client,
+                scope="analysis:create",
+                identifier=f"user:{current_user.id}",
+                ttl_seconds=ANALYSIS_CONCURRENCY_TTL_SECONDS,
+            )
 
         result = await analysis_service.analyze_resume(
             current_user,
@@ -224,9 +265,21 @@ async def create_analysis(
                 ),
             },
         ) from exc
+    except (RateLimitExceeded, ConcurrentRequestLimitExceeded) as exc:
+        await release_reserved_guest_analysis(redis_client, guest_id, guest_analyses_used)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many analysis requests.",
+            headers=retry_after_headers(exc),
+        ) from exc
     except Exception:
         await release_reserved_guest_analysis(redis_client, guest_id, guest_analyses_used)
         raise
+    finally:
+        try:
+            await release_concurrency_slot(redis_client, concurrency_key)
+        except Exception:
+            pass
 
     return AnalysisResponse(
         id=result.id,
@@ -287,6 +340,33 @@ async def release_reserved_guest_analysis(
         return
 
     await redis_client.decr(guest_analysis_key(guest_id))
+
+
+async def enforce_analysis_rate_limits(
+    *,
+    request: Request,
+    redis_client: Redis,
+    scope: str,
+    identifier: str,
+    max_requests: int,
+) -> None:
+    await enforce_rate_limit(
+        redis_client,
+        scope=f"analysis:create:{scope}",
+        identifier=identifier,
+        max_requests=max_requests,
+        window_seconds=ANALYSIS_RATE_LIMIT_SECONDS,
+    )
+
+    client_ip = client_ip_from_request(request)
+    if scope != "guest" and client_ip:
+        await enforce_rate_limit(
+            redis_client,
+            scope="analysis:create:ip",
+            identifier=client_ip,
+            max_requests=AUTH_ANALYSIS_RATE_LIMIT_MAX_REQUESTS * 2,
+            window_seconds=ANALYSIS_RATE_LIMIT_SECONDS,
+        )
 
 
 def analysis_history_item(analysis: Analysis) -> AnalysisHistoryItem:

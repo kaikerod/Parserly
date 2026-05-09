@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -10,6 +11,8 @@ DEFAULT_OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free"
 DEFAULT_OPENROUTER_FALLBACK_MODEL = "google/gemma-4-26b-a4b-it"
 CANONICAL_API_PUBLIC_URL = "https://parserly-api.vercel.app"
 LOCAL_API_PUBLIC_URLS = {"", "http://localhost:8000"}
+PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX = "parserly-"
+VERCEL_TEAM_HOST_SUFFIX = "-kaikerods-projects.vercel.app"
 
 
 class Settings(BaseSettings):
@@ -83,14 +86,19 @@ class Settings(BaseSettings):
 
 
 def _is_parserly_immutable_deployment_url(url: str) -> bool:
-    if not url.startswith("https://parserly-"):
+    parsed_url = urlparse(url)
+    if parsed_url.scheme != "https" or not parsed_url.hostname:
         return False
 
-    if not url.endswith("-kaikerods-projects.vercel.app"):
+    hostname = parsed_url.hostname.lower()
+    if not hostname.startswith(PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX):
         return False
 
-    deployment_id = url.removeprefix("https://parserly-").removesuffix(
-        "-kaikerods-projects.vercel.app"
+    if not hostname.endswith(VERCEL_TEAM_HOST_SUFFIX):
+        return False
+
+    deployment_id = hostname.removeprefix(PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX).removesuffix(
+        VERCEL_TEAM_HOST_SUFFIX
     )
     return deployment_id.isalnum()
 

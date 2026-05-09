@@ -16,7 +16,7 @@ def test_settings_replaces_immutable_vercel_api_url_in_production() -> None:
     settings = Settings(
         vercel=True,
         vercel_env="production",
-        api_public_url="https://parserly-d74qu5cdo-kaikerods-projects.vercel.app",
+        api_public_url="https://parserly-g2b4ih1a1-kaikerods-projects.vercel.app/",
     )
 
     assert settings.api_public_url == "https://parserly-api.vercel.app"

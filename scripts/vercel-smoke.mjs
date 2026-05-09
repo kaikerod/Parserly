@@ -3,6 +3,9 @@ import path from "node:path";
 import { File } from "node:buffer";
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+const CANONICAL_API_URL = "https://parserly-api.vercel.app";
+const PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX = "parserly-";
+const VERCEL_TEAM_HOST_SUFFIX = "-kaikerods-projects.vercel.app";
 const FORBIDDEN_HEALTH_TOKENS = [
   "OPENROUTER_API_KEY",
   "RESEND_API_KEY",
@@ -14,7 +17,7 @@ const FORBIDDEN_HEALTH_TOKENS = [
 ];
 
 async function main() {
-  const apiUrl = requiredUrl("API_PREVIEW_URL");
+  const apiUrl = canonicalApiUrl(requiredUrl("API_PREVIEW_URL"));
   const frontendUrl = requiredUrl("FRONTEND_PREVIEW_URL");
 
   await checkApiHealth(apiUrl);
@@ -46,6 +49,33 @@ function requiredUrl(name) {
   return url.toString().replace(/\/$/, "");
 }
 
+function canonicalApiUrl(apiUrl) {
+  const url = new URL(apiUrl);
+  if (!isParserlyImmutableApiDeploymentHost(url.hostname)) {
+    return apiUrl;
+  }
+
+  console.log(
+    `smoke: using ${CANONICAL_API_URL} instead of immutable API deployment host ${url.hostname}`
+  );
+  return CANONICAL_API_URL;
+}
+
+function isParserlyImmutableApiDeploymentHost(hostname) {
+  if (!hostname.startsWith(PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX)) {
+    return false;
+  }
+
+  if (!hostname.endsWith(VERCEL_TEAM_HOST_SUFFIX)) {
+    return false;
+  }
+
+  const deploymentId = hostname
+    .replace(PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX, "")
+    .replace(VERCEL_TEAM_HOST_SUFFIX, "");
+  return /^[a-z0-9]+$/.test(deploymentId);
+}
+
 async function checkApiHealth(apiUrl) {
   const response = await fetchWithTimeout(`${apiUrl}/health`, {
     headers: { Accept: "application/json" }
@@ -69,17 +99,17 @@ async function checkApiHealth(apiUrl) {
 }
 
 async function checkFrontendHome(frontendUrl) {
-  const response = await fetchWithTimeout(`${frontendUrl}/`, {
+  const response = await fetchWithTimeout(`${frontendUrl}/dashboard`, {
     headers: { Accept: "text/html" }
   });
   const body = await response.text();
 
-  assertOk(response, "GET /");
+  assertOk(response, "GET /dashboard");
   if (!body.includes("Parserly")) {
-    throw new Error("GET / did not render the Parserly frontend shell.");
+    throw new Error("GET /dashboard did not render the Parserly frontend shell.");
   }
 
-  console.log("smoke: frontend home renders");
+  console.log("smoke: frontend dashboard renders");
 }
 
 async function checkMagicLinkRequest(apiUrl, email) {

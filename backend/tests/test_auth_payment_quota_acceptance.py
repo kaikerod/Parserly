@@ -304,7 +304,7 @@ def test_mercadopago_webhook_signature_uses_manifest_headers() -> None:
     )
     data_id = "123456"
     request_id = "bb56a2f1-6aae-46ac-982e-9dcd3581d08e"
-    timestamp = "1742505638683"
+    timestamp = str(int(datetime.now(UTC).timestamp() * 1000))
     manifest = f"id:{data_id};request-id:{request_id};ts:{timestamp};"
     digest = hmac.new(b"webhook-secret", manifest.encode("utf-8"), hashlib.sha256).hexdigest()
     signature = f"ts={timestamp},v1={digest}"

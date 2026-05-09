@@ -6,9 +6,10 @@ import hmac
 import ipaddress
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from time import monotonic
+from time import monotonic, time
 from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
@@ -34,6 +35,8 @@ MERCADOPAGO_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=10.0, pool=5.0
 MERCADOPAGO_MAX_ATTEMPTS = 3
 MERCADOPAGO_RETRY_DELAY_SECONDS = 0.75
 MERCADOPAGO_RETRY_STATUS_CODES = {500, 502, 503, 504}
+MERCADOPAGO_SIGNATURE_TOLERANCE_SECONDS = 10 * 60
+PAYMENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MERCADOPAGO_FINAL_UNPAID_STATUSES = {
     "cancelled",
     "canceled",
@@ -191,6 +194,8 @@ class PaymentService:
         timestamp = signature_parts.get("ts")
         received_hash = signature_parts.get("v1")
         if not timestamp or not received_hash:
+            return False
+        if not self._is_recent_mercadopago_timestamp(timestamp):
             return False
 
         manifest = f"id:{data_id};request-id:{request_id};ts:{timestamp};"
@@ -610,6 +615,15 @@ class PaymentService:
         return parts
 
     @staticmethod
+    def _is_recent_mercadopago_timestamp(timestamp: str) -> bool:
+        try:
+            timestamp_seconds = int(timestamp) / 1000
+        except ValueError:
+            return False
+
+        return abs(time() - timestamp_seconds) <= MERCADOPAGO_SIGNATURE_TOLERANCE_SECONDS
+
+    @staticmethod
     def _is_mercadopago_payment_event(
         payload: dict[str, Any],
         event_type: str | None,
@@ -814,7 +828,10 @@ class PaymentService:
         if "/" in payment_id:
             payment_id = payment_id.rstrip("/").rsplit("/", 1)[-1]
 
-        return payment_id or None
+        if not PAYMENT_ID_RE.fullmatch(payment_id):
+            return None
+
+        return payment_id
 
     @staticmethod
     def _extract_payment_status(payload: dict[str, Any]) -> str | None:

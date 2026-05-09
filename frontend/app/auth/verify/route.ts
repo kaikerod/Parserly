@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 const LOCAL_API_BASE_URL = "http://localhost:8000";
 const CANONICAL_API_BASE_URL = "https://parserly-api.vercel.app";
+const PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX = "parserly-";
+const VERCEL_TEAM_HOST_SUFFIX = "-kaikerods-projects.vercel.app";
 const API_BASE_URL = resolveApiBaseUrl();
 
 export const dynamic = "force-dynamic";
@@ -80,7 +82,7 @@ function resolveApiBaseUrl() {
   const normalizedApiBaseUrl = (configuredApiBaseUrl || defaultApiBaseUrl()).replace(/\/$/, "");
 
   if (
-    process.env.VERCEL_ENV === "production" &&
+    isVercelProductionTarget() &&
     isParserlyImmutableDeploymentUrl(normalizedApiBaseUrl)
   ) {
     return CANONICAL_API_BASE_URL;
@@ -90,21 +92,36 @@ function resolveApiBaseUrl() {
 }
 
 function defaultApiBaseUrl() {
-  return process.env.VERCEL_ENV === "production" ? CANONICAL_API_BASE_URL : LOCAL_API_BASE_URL;
+  return isVercelProductionTarget() ? CANONICAL_API_BASE_URL : LOCAL_API_BASE_URL;
+}
+
+function isVercelProductionTarget() {
+  return process.env.VERCEL_ENV === "production" || process.env.VERCEL_TARGET_ENV === "production";
 }
 
 function isParserlyImmutableDeploymentUrl(url: string) {
-  if (!url.startsWith("https://parserly-")) {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
     return false;
   }
 
-  if (!url.endsWith("-kaikerods-projects.vercel.app")) {
+  if (parsedUrl.protocol !== "https:") {
     return false;
   }
 
-  const deploymentId = url
-    .replace("https://parserly-", "")
-    .replace("-kaikerods-projects.vercel.app", "");
+  if (!parsedUrl.hostname.startsWith(PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX)) {
+    return false;
+  }
+
+  if (!parsedUrl.hostname.endsWith(VERCEL_TEAM_HOST_SUFFIX)) {
+    return false;
+  }
+
+  const deploymentId = parsedUrl.hostname
+    .replace(PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX, "")
+    .replace(VERCEL_TEAM_HOST_SUFFIX, "");
   return /^[a-z0-9]+$/.test(deploymentId);
 }
 

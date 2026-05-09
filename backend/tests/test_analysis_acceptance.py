@@ -25,6 +25,7 @@ from app.services.analysis_service import (
     InvalidResumeFile,
     MAX_UPLOAD_BYTES,
     OPENROUTER_API_URL,
+    UserAnalysisReservation,
 )
 
 
@@ -387,7 +388,54 @@ class PersistDbSession:
         instance.created_at = datetime(2026, 5, 7, 12, 0, tzinfo=UTC)
 
 
-def test_persist_analysis_consumes_paid_credit_after_free_quota(runtime_dir: Path) -> None:
+class ReserveDbSession:
+    def __init__(self, row: tuple[int]) -> None:
+        self.row = row
+        self.statements: list[object] = []
+        self.committed = False
+        self.rolled_back = False
+
+    async def refresh(self, instance: object) -> None:
+        return None
+
+    async def execute(self, statement: object) -> PersistResult:
+        self.statements.append(statement)
+        return PersistResult(self.row)  # type: ignore[arg-type]
+
+    async def commit(self) -> None:
+        self.committed = True
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
+
+
+def test_reserve_user_analysis_consumes_paid_credit_after_free_quota(
+    runtime_dir: Path,
+) -> None:
+    db_session = ReserveDbSession((FREE_ANALYSIS_LIMIT,))
+    service = AnalysisService(
+        db_session=db_session,  # type: ignore[arg-type]
+        settings=Settings(environment="test", upload_tmp_dir=str(runtime_dir)),
+    )
+    user = SimpleNamespace(
+        id=uuid4(),
+        analyses_used=FREE_ANALYSIS_LIMIT,
+        paid_analysis_credits=10,
+    )
+
+    reservation = asyncio.run(service._reserve_user_analysis(user))  # type: ignore[arg-type]
+
+    assert reservation == UserAnalysisReservation(
+        analyses_used=FREE_ANALYSIS_LIMIT,
+        consumed_paid_credit=True,
+    )
+    assert user.paid_analysis_credits == 9
+    assert db_session.committed is True
+    assert db_session.rolled_back is False
+    assert "paid_analysis_credits" in str(db_session.statements[0])
+
+
+def test_persist_analysis_uses_reserved_paid_credit(runtime_dir: Path) -> None:
     db_session = PersistDbSession((FREE_ANALYSIS_LIMIT, 9))
     service = AnalysisService(
         db_session=db_session,  # type: ignore[arg-type]
@@ -409,13 +457,17 @@ def test_persist_analysis_consumes_paid_credit_after_free_quota(runtime_dir: Pat
             filename="resume.pdf",
             ai_result=ai_result,
             guest_analyses_used=None,
+            user_reservation=UserAnalysisReservation(
+                analyses_used=FREE_ANALYSIS_LIMIT,
+                consumed_paid_credit=True,
+            ),
         )
     )
 
     assert result.analyses_used == FREE_ANALYSIS_LIMIT
     assert db_session.committed is True
     assert db_session.rolled_back is False
-    assert "paid_analysis_credits" in str(db_session.statements[0])
+    assert db_session.statements == []
 
 
 def openrouter_response(content: str) -> httpx.Response:

@@ -14,8 +14,10 @@ async function importNextConfig(options = {}) {
     ? normalizedOptions.apiBaseUrl
     : "https://api.preview.example.com/";
   const { vercelEnv } = normalizedOptions;
+  const { vercelTargetEnv } = normalizedOptions;
   const previousApiBaseUrl = process.env.API_BASE_URL;
   const previousVercelEnv = process.env.VERCEL_ENV;
+  const previousVercelTargetEnv = process.env.VERCEL_TARGET_ENV;
 
   if (apiBaseUrl === undefined) {
     delete process.env.API_BASE_URL;
@@ -29,12 +31,19 @@ async function importNextConfig(options = {}) {
     process.env.VERCEL_ENV = vercelEnv;
   }
 
+  if (vercelTargetEnv === undefined) {
+    delete process.env.VERCEL_TARGET_ENV;
+  } else {
+    process.env.VERCEL_TARGET_ENV = vercelTargetEnv;
+  }
+
   const configUrl = pathToFileURL(path.join(root, "next.config.mjs"));
   try {
     return await import(`${configUrl.href}?acceptance=${Date.now()}${Math.random()}`);
   } finally {
     restoreEnv("API_BASE_URL", previousApiBaseUrl);
     restoreEnv("VERCEL_ENV", previousVercelEnv);
+    restoreEnv("VERCEL_TARGET_ENV", previousVercelTargetEnv);
   }
 }
 
@@ -50,31 +59,49 @@ async function readSource(relativePath) {
   return readFile(path.join(root, relativePath), "utf8");
 }
 
+function expectedApiRewrites(apiBaseUrl) {
+  return [
+    "/api/v1/auth/request-link",
+    "/api/v1/auth/logout",
+    "/api/v1/analysis",
+    "/api/v1/analysis/:path*",
+    "/api/v1/payments/create-charge",
+    "/api/v1/payments/status-stream"
+  ].map((source) => ({
+    source,
+    destination: `${apiBaseUrl}${source}`
+  }));
+}
+
 test("rewrites keep frontend API calls on the deployed FastAPI project", async () => {
   const { default: nextConfig } = await importNextConfig();
   const rewrites = await nextConfig.rewrites();
 
-  assert.deepEqual(rewrites, [
-    {
-      source: "/api/v1/:path*",
-      destination: "https://api.preview.example.com/api/v1/:path*"
-    }
-  ]);
+  assert.deepEqual(rewrites, expectedApiRewrites("https://api.preview.example.com"));
+  assert.equal(
+    rewrites.some((rewrite) => rewrite.source === "/api/v1/payments/webhook"),
+    false
+  );
 });
 
 test("production rewrites use the canonical API alias instead of immutable deployment URLs", async () => {
   const { default: nextConfig } = await importNextConfig({
-    apiBaseUrl: "https://parserly-d74qu5cdo-kaikerods-projects.vercel.app",
+    apiBaseUrl: "https://parserly-g2b4ih1a1-kaikerods-projects.vercel.app",
     vercelEnv: "production"
   });
   const rewrites = await nextConfig.rewrites();
 
-  assert.deepEqual(rewrites, [
-    {
-      source: "/api/v1/:path*",
-      destination: "https://parserly-api.vercel.app/api/v1/:path*"
-    }
-  ]);
+  assert.deepEqual(rewrites, expectedApiRewrites("https://parserly-api.vercel.app"));
+});
+
+test("production target rewrites use the canonical API alias for immutable deployment URLs", async () => {
+  const { default: nextConfig } = await importNextConfig({
+    apiBaseUrl: "https://parserly-g2b4ih1a1-kaikerods-projects.vercel.app/",
+    vercelTargetEnv: "production"
+  });
+  const rewrites = await nextConfig.rewrites();
+
+  assert.deepEqual(rewrites, expectedApiRewrites("https://parserly-api.vercel.app"));
 });
 
 test("production rewrites default to the canonical API alias on Vercel", async () => {
@@ -84,12 +111,7 @@ test("production rewrites default to the canonical API alias on Vercel", async (
   });
   const rewrites = await nextConfig.rewrites();
 
-  assert.deepEqual(rewrites, [
-    {
-      source: "/api/v1/:path*",
-      destination: "https://parserly-api.vercel.app/api/v1/:path*"
-    }
-  ]);
+  assert.deepEqual(rewrites, expectedApiRewrites("https://parserly-api.vercel.app"));
 });
 
 test("deploy headers cache only immutable assets and keep app/payment/API paths private", async () => {
@@ -104,6 +126,13 @@ test("deploy headers cache only immutable assets and keep app/payment/API paths 
   assert.equal(bySource["/dashboard"][0].value, "no-store, max-age=0");
   assert.equal(bySource["/auth/verify"][0].value, "no-store, max-age=0");
   assert.equal(bySource["/api/v1/:path*"][0].value, "no-store, max-age=0");
+  assert.ok(
+    bySource["/(.*)"].some(
+      (header) =>
+        header.key === "Strict-Transport-Security" &&
+        header.value === "max-age=31536000; includeSubDomains; preload"
+    )
+  );
 });
 
 test("upload flow validates file type and size before sending to the API", async () => {

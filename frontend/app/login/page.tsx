@@ -7,11 +7,11 @@ export const metadata: Metadata = {
 };
 
 interface LoginPageProps {
-  searchParams?: {
+  searchParams?: Promise<{
     error?: string | string[];
     reason?: string | string[];
     intent?: string | string[];
-  };
+  }>;
 }
 
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
@@ -21,16 +21,17 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   "verify-unavailable": "Não foi possível verificar o link agora. Tente novamente em instantes."
 };
 
-export default function LoginPage({ searchParams }: LoginPageProps) {
-  const errorCode = Array.isArray(searchParams?.error)
-    ? searchParams?.error[0]
-    : searchParams?.error;
-  const reasonCode = Array.isArray(searchParams?.reason)
-    ? searchParams?.reason[0]
-    : searchParams?.reason;
-  const intentCode = Array.isArray(searchParams?.intent)
-    ? searchParams?.intent[0]
-    : searchParams?.intent;
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const resolvedSearchParams = await searchParams;
+  const errorCode = Array.isArray(resolvedSearchParams?.error)
+    ? resolvedSearchParams?.error[0]
+    : resolvedSearchParams?.error;
+  const reasonCode = Array.isArray(resolvedSearchParams?.reason)
+    ? resolvedSearchParams?.reason[0]
+    : resolvedSearchParams?.reason;
+  const intentCode = Array.isArray(resolvedSearchParams?.intent)
+    ? resolvedSearchParams?.intent[0]
+    : resolvedSearchParams?.intent;
   const isRegistrationIntent = intentCode === "registration" || reasonCode === "free-limit";
   const initialNotice =
     isRegistrationIntent

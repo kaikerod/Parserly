@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api.v1.api import api_router
+from app.core.body_limit import RequestBodyLimitMiddleware
 from app.core.database import get_engine, init_development_database
 from app.core.observability import (
     configure_logging,
@@ -20,7 +21,9 @@ from app.core.observability import (
 from app.core.redis import get_redis_connection
 
 logger = logging.getLogger(__name__)
-HEALTH_CHECK_TIMEOUT_SECONDS = 2.0
+HEALTH_CHECK_TIMEOUT_SECONDS = 5.0
+MAX_ANALYSIS_MULTIPART_BYTES = 6 * 1024 * 1024
+MAX_WEBHOOK_BODY_BYTES = 64 * 1024
 
 configure_logging()
 
@@ -32,6 +35,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Parserly ATS Resume Analyzer API", lifespan=lifespan)
+app.add_middleware(
+    RequestBodyLimitMiddleware,
+    path_limits={
+        ("POST", "/api/v1/analysis"): MAX_ANALYSIS_MULTIPART_BYTES,
+        ("POST", "/api/v1/payments/webhook"): MAX_WEBHOOK_BODY_BYTES,
+    },
+)
 
 
 @app.middleware("http")
@@ -45,6 +55,7 @@ async def request_observability_middleware(request: Request, call_next):
         response = await call_next(request)
         status_code = response.status_code
         response.headers["X-Request-ID"] = trace_id
+        set_security_headers(response.headers)
         return response
     finally:
         duration_ms = round((perf_counter() - started_at) * 1000, 2)
@@ -101,3 +112,11 @@ async def _check_redis() -> None:
     redis_client = get_redis_connection()
     if not await redis_client.ping():
         raise RuntimeError("Redis ping failed")
+
+
+def set_security_headers(headers) -> None:
+    headers.setdefault("X-Content-Type-Options", "nosniff")
+    headers.setdefault("X-Frame-Options", "DENY")
+    headers.setdefault("Referrer-Policy", "no-referrer")
+    headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")

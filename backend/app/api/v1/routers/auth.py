@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.database import get_db_session
 from app.core.quotas import GUEST_ANALYSIS_COOKIE_NAME, normalize_guest_id
+from app.core.rate_limit import client_ip_from_request
 from app.core.redis import get_redis_client
 from app.schemas.auth import (
     LogoutResponse,
@@ -81,7 +82,7 @@ async def request_magic_link(
         result = await auth_service.request_magic_link(
             body.email,
             guest_id=guest_id,
-            client_ip=get_client_ip(request),
+            client_ip=client_ip_from_request(request),
         )
     except RateLimitExceeded as exc:
         raise HTTPException(
@@ -145,18 +146,3 @@ async def logout(
     await auth_service.logout(access_token)
     delete_auth_cookie(response)
     return LogoutResponse(message="Logged out.")
-
-
-def get_client_ip(request: Request) -> str | None:
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip() or None
-
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip.strip()
-
-    if request.client is None:
-        return None
-
-    return request.client.host
