@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import (
+    DatabaseSchemaError,
+    _validate_alembic_revision,
+    _validate_required_database_columns,
+    app,
+)
 
 
 async def healthy_check() -> None:
@@ -35,5 +40,57 @@ def test_health_endpoint_reports_degraded_dependency(monkeypatch) -> None:
     payload = response.json()
     assert response.status_code == 503
     assert payload["status"] == "degraded"
-    assert payload["checks"]["database"] == {"ok": False, "error": "RuntimeError"}
+    assert payload["checks"]["database"] == {
+        "ok": False,
+        "error": "RuntimeError",
+        "detail": "dependency unavailable",
+    }
     assert payload["checks"]["redis"] == {"ok": True}
+
+
+def test_health_schema_validation_accepts_current_revision_and_required_columns() -> None:
+    _validate_alembic_revision(["20260507_0002"])
+    _validate_required_database_columns(
+        [
+            ("users", "id"),
+            ("users", "email"),
+            ("users", "analyses_used"),
+            ("users", "paid_analysis_credits"),
+            ("analyses", "id"),
+            ("analyses", "user_id"),
+            ("analyses", "filename"),
+            ("analyses", "report_json"),
+            ("analyses", "model_used"),
+            ("payments", "id"),
+            ("payments", "user_id"),
+            ("payments", "billing_id"),
+            ("payments", "amount_cents"),
+            ("payments", "status"),
+        ]
+    )
+
+
+def test_health_schema_validation_rejects_outdated_migration_revision() -> None:
+    try:
+        _validate_alembic_revision(["20260503_0001"])
+    except DatabaseSchemaError as exc:
+        assert "Expected Alembic revision 20260507_0002" in str(exc)
+    else:
+        raise AssertionError("Expected DatabaseSchemaError")
+
+
+def test_health_schema_validation_rejects_missing_required_columns() -> None:
+    try:
+        _validate_required_database_columns(
+            [
+                ("users", "id"),
+                ("users", "email"),
+                ("users", "analyses_used"),
+            ]
+        )
+    except DatabaseSchemaError as exc:
+        assert "users.paid_analysis_credits" in str(exc)
+        assert "analyses.report_json" in str(exc)
+        assert "payments.billing_id" in str(exc)
+    else:
+        raise AssertionError("Expected DatabaseSchemaError")

@@ -179,16 +179,17 @@ test("authenticated dashboard loads and opens persistent analysis history", asyn
   assert.match(dashboard, /items=\{analysisHistory\}/);
 });
 
-test("login page is framed as access for registered users", async () => {
+test("login page is framed as unified passwordless access", async () => {
   const loginClient = await readSource("components/auth/login-client.tsx");
   const loginPage = await readSource("app/login/page.tsx");
 
-  assert.match(loginClient, /Login de usuário cadastrado/);
-  assert.match(loginClient, /E-mail cadastrado/);
-  assert.match(loginClient, /conta ativa no Parserly/);
+  assert.match(loginClient, /Login por magic link/);
+  assert.match(loginClient, /Acesso por e-mail/);
+  assert.match(loginClient, /Se for seu primeiro acesso, o Parserly cria sua conta ao verificar o link/);
   assert.match(loginClient, /Cadastro por magic link/);
-  assert.match(loginClient, /error\.status === 404/);
-  assert.match(loginPage, /e-mail já cadastrado/);
+  assert.doesNotMatch(loginClient, /error\.status === 404/);
+  assert.doesNotMatch(loginClient, /contas já cadastradas/);
+  assert.match(loginPage, /Entre ou crie acesso no Parserly por magic link/);
   assert.match(loginPage, /const isRegistrationIntent = intentCode === "registration" \|\| reasonCode === "free-limit"/);
   assert.match(loginPage, /intent=\{isRegistrationIntent \? "registration" : "login"\}/);
 });

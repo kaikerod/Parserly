@@ -63,6 +63,19 @@ As variáveis essenciais estão no arquivo `.env.example`. Não esqueça de conf
 - `MERCADOPAGO_ACCESS_TOKEN` (Para pagamentos)
 - `MERCADOPAGO_WEBHOOK_SECRET` (Para validação de webhooks)
 
+### Operacao de Banco em Producao
+
+O backend nao cria nem atualiza schema automaticamente quando `ENVIRONMENT=production` ou `VERCEL=1`. Antes de promover uma versao para producao, execute obrigatoriamente as migrations:
+
+```bash
+cd backend
+DATABASE_URL="$PRODUCTION_DATABASE_URL" python -m alembic upgrade head
+```
+
+O workflow `.github/workflows/vercel-promote.yml` executa esta etapa antes do `vercel promote` e falha se `PRODUCTION_DATABASE_URL` nao estiver configurada. Nao mova migrations para startup/runtime da API: isso pode gerar corrida entre instancias e deixar deploys parcialmente saudaveis.
+
+O endpoint `/api/v1/health` tambem valida a revisao esperada do Alembic e colunas essenciais. Se o banco estiver conectado mas o schema estiver ausente ou desatualizado, o health retorna `503` com status `degraded`.
+
 ---
 
 ## 🇺🇸 English
@@ -123,6 +136,19 @@ Key variables are listed in `.env.example`. Essential configurations:
 - `API_PUBLIC_URL` (Public API URL used by webhooks)
 - `MERCADOPAGO_ACCESS_TOKEN` (For Payments)
 - `MERCADOPAGO_WEBHOOK_SECRET` (For webhook validation)
+
+### Production Database Operations
+
+The backend does not create or update schema automatically when `ENVIRONMENT=production` or `VERCEL=1`. Before promoting a release to production, migrations must be run:
+
+```bash
+cd backend
+DATABASE_URL="$PRODUCTION_DATABASE_URL" python -m alembic upgrade head
+```
+
+The `.github/workflows/vercel-promote.yml` workflow runs this before `vercel promote` and fails when `PRODUCTION_DATABASE_URL` is missing. Do not run migrations from API startup/runtime, because concurrent instances can race and leave a deployment partially healthy.
+
+The `/api/v1/health` endpoint also validates the expected Alembic revision and essential columns. If the database is reachable but the schema is missing or outdated, health returns `503` with `degraded` status.
 
 ---
 

@@ -13,7 +13,7 @@ import pytest
 
 import app.services.payment_service as payment_module
 from app.core.config import Settings
-from app.core.quotas import FREE_ANALYSIS_LIMIT, guest_analysis_key
+from app.core.quotas import FREE_ANALYSIS_LIMIT, guest_analysis_client_key, guest_analysis_key
 from app.api.v1.routers.analysis import GuestQuotaExceeded, release_reserved_guest_analysis
 from app.api.v1.routers.analysis import reserve_guest_analysis
 from app.services.auth_service import AuthService, InvalidMagicLinkToken, MagicLinkPayload
@@ -61,6 +61,34 @@ def test_guest_quota_reservation_blocks_after_free_limit_and_rolls_back() -> Non
     assert exc_info.value.analyses_used == FREE_ANALYSIS_LIMIT
     assert redis.values[guest_analysis_key(guest_id)] == FREE_ANALYSIS_LIMIT
     assert guest_analysis_key(guest_id) in redis.expirations
+
+
+def test_guest_quota_reservation_blocks_cookie_reset_with_same_client_key() -> None:
+    redis = GuestQuotaRedis()
+    first_guest_id = str(uuid4())
+    second_guest_id = str(uuid4())
+    client_key = "analysis:guest-client:test-client:used"
+
+    for expected_usage in range(1, FREE_ANALYSIS_LIMIT + 1):
+        reserved_usage = asyncio.run(
+            reserve_guest_analysis(
+                redis,  # type: ignore[arg-type]
+                [guest_analysis_key(first_guest_id), client_key],
+            )
+        )
+        assert reserved_usage == expected_usage
+
+    with pytest.raises(GuestQuotaExceeded):
+        asyncio.run(
+            reserve_guest_analysis(
+                redis,  # type: ignore[arg-type]
+                [guest_analysis_key(second_guest_id), client_key],
+            )
+        )
+
+    assert redis.values[guest_analysis_key(first_guest_id)] == FREE_ANALYSIS_LIMIT
+    assert redis.values[guest_analysis_key(second_guest_id)] == 0
+    assert redis.values[client_key] == FREE_ANALYSIS_LIMIT
 
 
 def test_guest_quota_reservation_is_released_after_processing_failure() -> None:
@@ -155,8 +183,35 @@ class FakeAuthService(AuthService):
             analyses_used=0,
         )
 
-    async def _is_guest_quota_exhausted(self, guest_id: str | None) -> bool:
+    async def _is_guest_quota_exhausted(
+        self,
+        guest_id: str | None,
+        *,
+        client_ip: str | None = None,
+    ) -> bool:
         return self.guest_quota_exhausted
+
+    async def _mark_user_free_quota_exhausted(self, user: SimpleNamespace) -> None:
+        user.analyses_used = FREE_ANALYSIS_LIMIT
+
+
+class ClientQuotaAuthService(AuthService):
+    def __init__(self, redis: MagicLinkRedis, settings: Settings) -> None:
+        self.test_user = SimpleNamespace(id=uuid4(), email="person@example.com", analyses_used=0)
+        self.email_service = FakeEmailService()
+        super().__init__(
+            db_session=object(),  # type: ignore[arg-type]
+            redis_client=redis,  # type: ignore[arg-type]
+            settings=settings,
+            email_service=self.email_service,  # type: ignore[arg-type]
+        )
+
+    async def _get_user_by_email(self, email: str) -> None:
+        return None
+
+    async def _get_or_create_user(self, email: str) -> SimpleNamespace:
+        self.test_user.email = email
+        return self.test_user
 
     async def _mark_user_free_quota_exhausted(self, user: SimpleNamespace) -> None:
         user.analyses_used = FREE_ANALYSIS_LIMIT
@@ -296,6 +351,56 @@ def test_new_user_magic_link_preserves_exhausted_guest_quota() -> None:
     assert session.requires_payment is True
 
 
+def test_new_user_magic_link_preserves_exhausted_guest_client_quota() -> None:
+    redis = MagicLinkRedis()
+    settings = Settings(
+        environment="test",
+        secret_key="magic-link-test-secret-with-32-bytes-minimum",
+        app_url="https://parserly.test",
+    )
+    client_ip = "203.0.113.10"
+    client_quota_key = guest_analysis_client_key(settings.secret_key, client_ip)
+    assert client_quota_key is not None
+    redis.store[client_quota_key] = str(FREE_ANALYSIS_LIMIT)
+    service = ClientQuotaAuthService(redis, settings)
+
+    result = asyncio.run(
+        service.request_magic_link("person@example.com", client_ip=client_ip)
+    )
+
+    token = UUID(result.magic_link.rsplit("token=", 1)[1])
+    payload = service._decode_magic_link_payload(redis.store[service._magic_link_key(token)])
+
+    assert payload == MagicLinkPayload(
+        email="person@example.com",
+        requires_payment=True,
+        existing_user=False,
+    )
+
+
+def test_magic_link_verify_rechecks_exhausted_guest_client_quota() -> None:
+    redis = MagicLinkRedis()
+    settings = Settings(
+        environment="test",
+        secret_key="magic-link-test-secret-with-32-bytes-minimum",
+        app_url="https://parserly.test",
+    )
+    token = uuid4()
+    service = ClientQuotaAuthService(redis, settings)
+    redis.store[service._magic_link_key(token)] = service._encode_magic_link_payload(
+        MagicLinkPayload(email="person@example.com", requires_payment=False)
+    )
+    client_ip = "203.0.113.11"
+    client_quota_key = guest_analysis_client_key(settings.secret_key, client_ip)
+    assert client_quota_key is not None
+    redis.store[client_quota_key] = str(FREE_ANALYSIS_LIMIT)
+
+    session = asyncio.run(service.verify_magic_link(token, client_ip=client_ip))
+
+    assert session.requires_payment is True
+    assert service.test_user.analyses_used == FREE_ANALYSIS_LIMIT
+
+
 def test_mercadopago_webhook_signature_uses_manifest_headers() -> None:
     service = PaymentService(
         db_session=object(),  # type: ignore[arg-type]
@@ -395,6 +500,68 @@ def test_mercadopago_mock_charge_generates_qr_payload_without_access_token() -> 
     assert charge.amount_cents == 1990
     assert db_session.saved_payment is not None
     assert db_session.committed is True
+
+
+def test_create_charge_commits_local_pending_payment_before_provider_call() -> None:
+    class CreateChargeRedis:
+        async def eval(self, script: str, key_count: int, key: str, *args: object) -> list[int]:
+            return [1, int(args[0]), 1]
+
+    class CreateChargeDbSession:
+        def __init__(self) -> None:
+            self.events: list[str] = []
+            self.saved_payment = None
+
+        def add(self, payment: object) -> None:
+            self.saved_payment = payment
+            self.events.append("add")
+
+        async def execute(self, statement: object) -> ScalarResult:
+            self.events.append("execute")
+            return ScalarResult()
+
+        async def commit(self) -> None:
+            self.events.append("commit")
+
+        async def rollback(self) -> None:
+            self.events.append("rollback")
+
+    class ProviderRecordingPaymentService(PaymentService):
+        async def _create_mercadopago_pix(
+            self,
+            user: object,
+            local_billing_id: str | None = None,
+        ) -> PaymentCharge:
+            assert local_billing_id is not None
+            assert db_session.saved_payment is not None
+            assert db_session.saved_payment.billing_id == local_billing_id
+            assert db_session.events == ["add", "commit"]
+            return PaymentCharge(
+                billing_id=local_billing_id,
+                pix_qr_code="qr",
+                pix_copy_paste="copy-paste",
+                expires_at=datetime.now(UTC),
+                expires_in=1,
+                amount_cents=self.settings.analysis_price_cents,
+                analysis_credits=PAID_ANALYSIS_CREDITS,
+            )
+
+    db_session = CreateChargeDbSession()
+    service = ProviderRecordingPaymentService(
+        db_session=db_session,  # type: ignore[arg-type]
+        redis_client=CreateChargeRedis(),  # type: ignore[arg-type]
+        settings=Settings(
+            mercadopago_access_token="APP_USR-test-token",
+            mercadopago_mock_payments=False,
+            analysis_price_cents=1990,
+        ),
+    )
+    user = SimpleNamespace(id=uuid4(), email="buyer@example.com")
+
+    charge = asyncio.run(service.create_charge(user))  # type: ignore[arg-type]
+
+    assert charge.billing_id.startswith("parserly-")
+    assert db_session.events == ["add", "commit"]
 
 
 def test_mercadopago_create_charge_rejects_unsupported_test_access_token() -> None:
@@ -581,14 +748,25 @@ class RecordingPaymentService(PaymentService):
 
     async def _process_paid_event(
         self,
-        billing_id: str,
+        billing_ids: str | tuple[str, ...],
         payload_user_id: UUID | None,
+        provider_billing_id: str | None = None,
     ) -> WebhookProcessResult:
-        self.calls.append(("paid", billing_id, payload_user_id))
+        billing_id = provider_billing_id or (
+            billing_ids if isinstance(billing_ids, str) else billing_ids[0]
+        )
+        self.calls.append(("paid", str(billing_ids), payload_user_id))
         return WebhookProcessResult(status=self.status, billing_id=billing_id)
 
-    async def _process_expired_event(self, billing_id: str) -> WebhookProcessResult:
-        self.calls.append(("expired", billing_id, None))
+    async def _process_expired_event(
+        self,
+        billing_ids: str | tuple[str, ...],
+        provider_billing_id: str | None = None,
+    ) -> WebhookProcessResult:
+        billing_id = provider_billing_id or (
+            billing_ids if isinstance(billing_ids, str) else billing_ids[0]
+        )
+        self.calls.append(("expired", str(billing_ids), None))
         return WebhookProcessResult(status=self.status, billing_id=billing_id)
 
 
@@ -613,7 +791,27 @@ def test_payment_webhook_routes_paid_duplicate_event_idempotently() -> None:
     result = asyncio.run(service.process_webhook(json.dumps(payload).encode("utf-8")))
 
     assert result.status == "duplicate"
-    assert service.calls == [("paid", "123456", user_id)]
+    assert service.calls == [("paid", "('123456',)", user_id)]
+
+
+def test_payment_webhook_routes_paid_event_by_external_reference() -> None:
+    user_id = uuid4()
+    service = RecordingPaymentService(
+        status="processed",
+        payment_payload={
+            "id": "123456",
+            "status": "approved",
+            "external_reference": "parserly-local-id",
+            "metadata": {"user_id": str(user_id)},
+        },
+    )
+    payload = {"action": "payment.updated", "type": "payment", "data": {"id": "123456"}}
+
+    result = asyncio.run(service.process_webhook(json.dumps(payload).encode("utf-8")))
+
+    assert result.status == "processed"
+    assert result.billing_id == "123456"
+    assert service.calls == [("paid", "('123456', 'parserly-local-id')", user_id)]
 
 
 def test_payment_webhook_routes_expired_event() -> None:
@@ -626,7 +824,7 @@ def test_payment_webhook_routes_expired_event() -> None:
     result = asyncio.run(service.process_webhook(json.dumps(payload).encode("utf-8")))
 
     assert result.status == "expired"
-    assert service.calls == [("expired", "123456", None)]
+    assert service.calls == [("expired", "('123456',)", None)]
 
 
 def test_payment_webhook_rejects_invalid_payload_and_ignores_missing_payment_id() -> None:

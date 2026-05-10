@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from time import monotonic, time
-from typing import Any
+from typing import Any, Sequence
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -122,45 +122,116 @@ class PaymentService:
 
     async def create_charge(self, user: User) -> PaymentCharge:
         await self._enforce_create_charge_rate_limit(user.id)
+        local_billing_id = self._new_local_billing_id(
+            prefix="mock" if self.settings.mercadopago_mock_payments else "parserly"
+        )
 
         try:
-            provider_charge = (
-                self._create_mock_pix(user)
-                if self.settings.mercadopago_mock_payments
-                else await self._create_mercadopago_pix(user)
+            await self._create_pending_payment(user, local_billing_id)
+        except IntegrityError as exc:
+            await self._release_create_charge_rate_limit(user.id)
+            log_structured(
+                logger,
+                logging.WARNING,
+                "payment_local_billing_id_duplicate",
+                billing_id=local_billing_id,
             )
-        except PaymentProviderUnavailable:
+            raise PaymentProviderUnavailable from exc
+        except Exception:
             await self._release_create_charge_rate_limit(user.id)
             raise
 
+        try:
+            charge = (
+                self._create_mock_pix(user, local_billing_id)
+                if self.settings.mercadopago_mock_payments
+                else await self._create_mercadopago_pix(user, local_billing_id)
+            )
+        except PaymentProviderUnavailable:
+            await self._mark_payment_status(local_billing_id, "failed")
+            await self._release_create_charge_rate_limit(user.id)
+            raise
+
+        if charge.billing_id != local_billing_id:
+            try:
+                await self._replace_payment_billing_id(
+                    local_billing_id=local_billing_id,
+                    provider_billing_id=charge.billing_id,
+                )
+            except IntegrityError as exc:
+                log_structured(
+                    logger,
+                    logging.WARNING,
+                    "mercadopago_duplicate_payment_id",
+                    billing_id=charge.billing_id,
+                    local_billing_id=local_billing_id,
+                )
+                raise PaymentProviderUnavailable from exc
+            except Exception:
+                log_structured(
+                    logger,
+                    logging.ERROR,
+                    "payment_provider_billing_id_update_failed",
+                    billing_id=charge.billing_id,
+                    local_billing_id=local_billing_id,
+                )
+
+        return charge
+
+    async def _create_pending_payment(self, user: User, billing_id: str) -> None:
         payment = Payment(
             user_id=user.id,
-            billing_id=provider_charge.billing_id,
-            amount_cents=provider_charge.amount_cents,
+            billing_id=billing_id,
+            amount_cents=self.settings.analysis_price_cents,
             status="pending",
         )
         self.db_session.add(payment)
 
         try:
             await self.db_session.commit()
-        except IntegrityError as exc:
+        except IntegrityError:
             await self.db_session.rollback()
-            log_structured(
-                logger,
-                logging.WARNING,
-                "mercadopago_duplicate_payment_id",
-                billing_id=provider_charge.billing_id,
-            )
-            raise PaymentProviderUnavailable from exc
+            raise
         except Exception:
             await self.db_session.rollback()
             raise
 
-        return provider_charge
+    async def _replace_payment_billing_id(
+        self,
+        *,
+        local_billing_id: str,
+        provider_billing_id: str,
+    ) -> None:
+        try:
+            await self.db_session.execute(
+                update(Payment)
+                .where(Payment.billing_id == local_billing_id, Payment.status == "pending")
+                .values(billing_id=provider_billing_id)
+            )
+            await self.db_session.commit()
+        except Exception:
+            await self.db_session.rollback()
+            raise
 
-    def _create_mock_pix(self, user: User) -> PaymentCharge:
+    async def _mark_payment_status(self, billing_id: str, status: str) -> None:
+        try:
+            await self.db_session.execute(
+                update(Payment).where(Payment.billing_id == billing_id).values(status=status)
+            )
+            await self.db_session.commit()
+        except Exception:
+            await self.db_session.rollback()
+            log_structured(
+                logger,
+                logging.ERROR,
+                "payment_status_update_failed",
+                billing_id=billing_id,
+                status=status,
+            )
+
+    def _create_mock_pix(self, user: User, billing_id: str | None = None) -> PaymentCharge:
         expires_at = datetime.now(UTC) + timedelta(seconds=MERCADOPAGO_PIX_EXPIRATION_SECONDS)
-        billing_id = f"mock-{uuid4()}"
+        billing_id = billing_id or self._new_local_billing_id(prefix="mock")
         pix_copy_paste = "|".join(
             (
                 "PARSERLY_MOCK_PIX",
@@ -244,10 +315,12 @@ class PaymentService:
         payment_status = self._extract_payment_status(payment_payload)
         if payment_status == "approved":
             user_id = self._extract_user_id(payment_payload)
-            return await self._process_paid_event(payment_id, user_id)
+            lookup_billing_ids = self._payment_lookup_ids(payment_id, payment_payload)
+            return await self._process_paid_event(lookup_billing_ids, user_id, payment_id)
 
         if payment_status in MERCADOPAGO_FINAL_UNPAID_STATUSES:
-            return await self._process_expired_event(payment_id)
+            lookup_billing_ids = self._payment_lookup_ids(payment_id, payment_payload)
+            return await self._process_expired_event(lookup_billing_ids, payment_id)
 
         log_structured(
             logger,
@@ -259,7 +332,11 @@ class PaymentService:
         )
         return WebhookProcessResult(status="ignored", billing_id=payment_id)
 
-    async def _create_mercadopago_pix(self, user: User) -> PaymentCharge:
+    async def _create_mercadopago_pix(
+        self,
+        user: User,
+        local_billing_id: str | None = None,
+    ) -> PaymentCharge:
         access_token = self._mercadopago_access_token()
 
         if self._uses_unsupported_test_access_token(access_token):
@@ -270,7 +347,7 @@ class PaymentService:
             )
 
         expires_at = datetime.now(UTC) + timedelta(seconds=MERCADOPAGO_PIX_EXPIRATION_SECONDS)
-        idempotency_key = f"parserly-{uuid4()}"
+        idempotency_key = local_billing_id or self._new_local_billing_id(prefix="parserly")
         payload = {
             "transaction_amount": self._analysis_price_reais(),
             "description": f"Pacote Parserly - {PAID_ANALYSIS_CREDITS} analises ATS",
@@ -403,46 +480,49 @@ class PaymentService:
 
     async def _process_paid_event(
         self,
-        billing_id: str,
+        billing_ids: str | Sequence[str],
         payload_user_id: UUID | None,
+        provider_billing_id: str | None = None,
     ) -> WebhookProcessResult:
+        lookup_billing_ids = self._normalize_billing_ids(billing_ids)
+        result_billing_id = provider_billing_id or lookup_billing_ids[0]
         update_result = await self.db_session.execute(
             update(Payment)
-            .where(Payment.billing_id == billing_id, Payment.status != "paid")
+            .where(Payment.billing_id.in_(lookup_billing_ids), Payment.status != "paid")
             .values(status="paid", confirmed_at=func.now())
             .returning(Payment.user_id)
         )
         payment_user_id = update_result.scalar_one_or_none()
 
         if payment_user_id is None:
-            existing_payment = await self._get_payment_by_billing_id(billing_id)
+            existing_payment = await self._get_payment_by_any_billing_id(lookup_billing_ids)
             if existing_payment is not None and existing_payment.status == "paid":
                 log_structured(
                     logger,
                     logging.WARNING,
                     "mercadopago_webhook_duplicate",
-                    billing_id=billing_id,
+                    billing_id=result_billing_id,
                     status="paid",
                 )
                 await self.db_session.rollback()
-                return WebhookProcessResult(status="duplicate", billing_id=billing_id)
+                return WebhookProcessResult(status="duplicate", billing_id=result_billing_id)
 
             log_structured(
                 logger,
                 logging.WARNING,
                 "mercadopago_webhook_unknown_payment_id",
-                billing_id=billing_id,
+                billing_id=result_billing_id,
                 event_status="paid",
             )
             await self.db_session.rollback()
-            return WebhookProcessResult(status="ignored", billing_id=billing_id)
+            return WebhookProcessResult(status="ignored", billing_id=result_billing_id)
 
         if payload_user_id is not None and payload_user_id != payment_user_id:
             log_structured(
                 logger,
                 logging.WARNING,
                 "mercadopago_webhook_user_mismatch",
-                billing_id=billing_id,
+                billing_id=result_billing_id,
             )
 
         await self.db_session.execute(
@@ -461,27 +541,33 @@ class PaymentService:
             raise
 
         await self._publish_analysis_unlocked(payment_user_id)
-        return WebhookProcessResult(status="processed", billing_id=billing_id)
+        return WebhookProcessResult(status="processed", billing_id=result_billing_id)
 
-    async def _process_expired_event(self, billing_id: str) -> WebhookProcessResult:
+    async def _process_expired_event(
+        self,
+        billing_ids: str | Sequence[str],
+        provider_billing_id: str | None = None,
+    ) -> WebhookProcessResult:
+        lookup_billing_ids = self._normalize_billing_ids(billing_ids)
+        result_billing_id = provider_billing_id or lookup_billing_ids[0]
         update_result = await self.db_session.execute(
             update(Payment)
-            .where(Payment.billing_id == billing_id, Payment.status == "pending")
+            .where(Payment.billing_id.in_(lookup_billing_ids), Payment.status == "pending")
             .values(status="expired")
             .returning(Payment.id)
         )
         expired_payment_id = update_result.scalar_one_or_none()
         if expired_payment_id is None:
-            existing_payment = await self._get_payment_by_billing_id(billing_id)
+            existing_payment = await self._get_payment_by_any_billing_id(lookup_billing_ids)
             if existing_payment is not None and existing_payment.status in {"expired", "paid"}:
                 await self.db_session.rollback()
-                return WebhookProcessResult(status="duplicate", billing_id=billing_id)
+                return WebhookProcessResult(status="duplicate", billing_id=result_billing_id)
 
             await self.db_session.rollback()
-            return WebhookProcessResult(status="ignored", billing_id=billing_id)
+            return WebhookProcessResult(status="ignored", billing_id=result_billing_id)
 
         await self.db_session.commit()
-        return WebhookProcessResult(status="expired", billing_id=billing_id)
+        return WebhookProcessResult(status="expired", billing_id=result_billing_id)
 
     async def _publish_analysis_unlocked(self, user_id: UUID) -> None:
         channel = f"analysis_unlocked:{user_id}"
@@ -534,6 +620,35 @@ class PaymentService:
             select(Payment).where(Payment.billing_id == billing_id)
         )
         return result.scalar_one_or_none()
+
+    async def _get_payment_by_any_billing_id(self, billing_ids: Sequence[str]) -> Payment | None:
+        result = await self.db_session.execute(
+            select(Payment).where(Payment.billing_id.in_(billing_ids))
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    def _normalize_billing_ids(billing_ids: str | Sequence[str]) -> tuple[str, ...]:
+        if isinstance(billing_ids, str):
+            return (billing_ids,)
+
+        unique_billing_ids = tuple(dict.fromkeys(str(value) for value in billing_ids if value))
+        if not unique_billing_ids:
+            raise ValueError("at least one billing id is required")
+
+        return unique_billing_ids
+
+    @staticmethod
+    def _payment_lookup_ids(payment_id: str, payload: dict[str, Any]) -> tuple[str, ...]:
+        candidates = [
+            payment_id,
+            PaymentService._extract_external_reference(payload),
+        ]
+        return tuple(dict.fromkeys(value for value in candidates if value))
+
+    @staticmethod
+    def _new_local_billing_id(*, prefix: str) -> str:
+        return f"{prefix}-{uuid4()}"
 
     def _mercadopago_url(self, path: str) -> str:
         base_url = self.settings.mercadopago_api_url.strip()
@@ -852,6 +967,18 @@ class PaymentService:
             return UUID(str(user_id))
         except ValueError:
             return None
+
+    @staticmethod
+    def _extract_external_reference(payload: dict[str, Any]) -> str | None:
+        value = PaymentService._first_value(payload, ("external_reference",))
+        if value is None:
+            return None
+
+        external_reference = str(value)
+        if not PAYMENT_ID_RE.fullmatch(external_reference):
+            return None
+
+        return external_reference
 
     @staticmethod
     def _first_value(root: dict[str, Any], *paths: tuple[str, ...]) -> Any:

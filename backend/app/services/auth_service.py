@@ -16,7 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.quotas import (
     FREE_ANALYSIS_LIMIT,
+    get_guest_analyses_used_by_key,
     get_guest_analyses_used,
+    guest_analysis_client_key,
     user_requires_payment,
 )
 from app.models.user import User
@@ -111,7 +113,10 @@ class AuthService:
         requires_payment = (
             user_requires_payment(user)
             if user is not None
-            else await self._is_guest_quota_exhausted(guest_id)
+            else await self._is_guest_quota_exhausted(
+                guest_id,
+                client_ip=client_ip,
+            )
         )
         magic_link_key = self._magic_link_key(token)
         await self.redis.set(
@@ -148,6 +153,7 @@ class AuthService:
         token: UUID,
         *,
         guest_id: str | None = None,
+        client_ip: str | None = None,
     ) -> AuthSession:
         if token.version != 4:
             raise InvalidMagicLinkToken
@@ -164,7 +170,8 @@ class AuthService:
         requires_payment = payload.requires_payment
         if not payload.existing_user:
             requires_payment = requires_payment or await self._is_guest_quota_exhausted(
-                guest_id
+                guest_id,
+                client_ip=client_ip,
             )
         if requires_payment:
             await self._mark_user_free_quota_exhausted(user)
@@ -293,9 +300,18 @@ class AuthService:
         )
         return result.scalar_one_or_none()
 
-    async def _is_guest_quota_exhausted(self, guest_id: str | None) -> bool:
+    async def _is_guest_quota_exhausted(
+        self,
+        guest_id: str | None,
+        *,
+        client_ip: str | None = None,
+    ) -> bool:
         analyses_used = await get_guest_analyses_used(self.redis, guest_id)
-        return analyses_used >= FREE_ANALYSIS_LIMIT
+        client_analyses_used = await get_guest_analyses_used_by_key(
+            self.redis,
+            guest_analysis_client_key(self.settings.secret_key, client_ip),
+        )
+        return max(analyses_used, client_analyses_used) >= FREE_ANALYSIS_LIMIT
 
     async def _mark_user_free_quota_exhausted(self, user: User) -> None:
         if user.analyses_used >= FREE_ANALYSIS_LIMIT:

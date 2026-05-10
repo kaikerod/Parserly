@@ -26,7 +26,7 @@ interface LoginClientProps {
 }
 
 const LOGIN_MARKERS = [
-  { label: "Conta", value: "existente" },
+  { label: "Acesso", value: "e-mail" },
   { label: "Link", value: "15 min" },
   { label: "Sessão", value: "7 dias" }
 ];
@@ -108,7 +108,7 @@ export function LoginClient({
               <span className="font-display text-base font-semibold text-paper">Parserly</span>
               <span className="hidden text-paper/30 sm:inline">/</span>
               <span className="hidden truncate sm:inline">
-                {isRegistrationFlow ? "Cadastro por magic link" : "Login de usuário cadastrado"}
+                {isRegistrationFlow ? "Cadastro por magic link" : "Login por magic link"}
               </span>
             </div>
           </div>
@@ -124,7 +124,7 @@ export function LoginClient({
               ) : (
                 <UserCheck className="h-4 w-4 text-acid" aria-hidden="true" />
               )}
-              {isRegistrationFlow ? "Cadastro por e-mail" : "Conta existente"}
+              {isRegistrationFlow ? "Cadastro por e-mail" : "Acesso por e-mail"}
             </div>
 
             <h1 className="mt-5 max-w-4xl font-display text-5xl font-semibold leading-none text-paper md:text-6xl">
@@ -136,7 +136,7 @@ export function LoginClient({
             <p className="mt-5 max-w-2xl text-sm leading-6 text-paper/65">
               {isRegistrationFlow
                 ? "Use seu e-mail para identificar sua conta, preservar sua quota e continuar sem senha."
-                : "Use o e-mail já cadastrado para recuperar sua sessão, manter sua quota e continuar suas análises sem senha."}
+                : "Use seu e-mail para entrar ou criar acesso, manter sua quota e continuar suas análises sem senha."}
             </p>
 
             <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
@@ -161,7 +161,7 @@ export function LoginClient({
             <div className="mb-6 flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase text-acid">
-                  {isRegistrationFlow ? "Identificação" : "Conta cadastrada"}
+                  {isRegistrationFlow ? "Identificação" : "Acesso sem senha"}
                 </p>
                 <h2 id="login-title" className="mt-1 font-display text-3xl font-semibold">
                   {isRegistrationFlow ? "Receber magic link" : "Entrar no Parserly"}
@@ -173,7 +173,7 @@ export function LoginClient({
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <div>
                 <label htmlFor="email" className="text-sm font-semibold text-paper/80">
-                  {isRegistrationFlow ? "E-mail" : "E-mail cadastrado"}
+                  E-mail
                 </label>
                 <div className="relative mt-2">
                   <Mail
@@ -195,8 +195,8 @@ export function LoginClient({
                 </div>
                 <p id="email-help" className="mt-2 text-xs leading-5 text-paper/45">
                   {isRegistrationFlow
-                    ? "Se o e-mail já existir, ele será usado para recuperar sua conta."
-                    : "O acesso é enviado somente para e-mails com conta ativa no Parserly."}
+                    ? "Se o e-mail já tiver acesso, ele será usado para recuperar sua sessão."
+                    : "Se for seu primeiro acesso, o Parserly cria sua conta ao verificar o link."}
                 </p>
               </div>
 
@@ -236,7 +236,7 @@ export function LoginClient({
                     <p className="mt-1 leading-6 text-paper/65">
                       {isRegistrationFlow
                         ? "O link chega em instantes, expira em 15 minutos e só pode ser usado uma vez."
-                        : "Se houver uma conta ativa, o link de login chega em instantes e expira em 15 minutos."}
+                        : "O link de acesso chega em instantes, expira em 15 minutos e só pode ser usado uma vez."}
                     </p>
                   </div>
                 </div>
@@ -303,10 +303,6 @@ function resolveLoginError(error: unknown) {
 
     if (error.status === 422) {
       return "Informe um e-mail válido para receber o link de acesso.";
-    }
-
-    if (error.status === 404) {
-      return "Este acesso é apenas para contas já cadastradas. Confira o e-mail e tente novamente.";
     }
 
     return error.message;

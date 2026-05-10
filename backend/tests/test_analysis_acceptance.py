@@ -443,10 +443,10 @@ def test_reserve_user_analysis_consumes_paid_credit_after_free_quota(
         analyses_used=FREE_ANALYSIS_LIMIT,
         consumed_paid_credit=True,
     )
-    assert user._paid_analysis_credits == 9
-    assert db_session.committed is True
+    assert user._paid_analysis_credits == 10
+    assert db_session.committed is False
     assert db_session.rolled_back is False
-    assert "paid_analysis_credits" in str(db_session.statements[0])
+    assert db_session.statements == []
 
 
 def test_persist_analysis_uses_reserved_paid_credit(runtime_dir: Path) -> None:
@@ -479,9 +479,11 @@ def test_persist_analysis_uses_reserved_paid_credit(runtime_dir: Path) -> None:
     )
 
     assert result.analyses_used == FREE_ANALYSIS_LIMIT
+    assert user.paid_analysis_credits == 9
     assert db_session.committed is True
     assert db_session.rolled_back is False
-    assert db_session.statements == []
+    assert len(db_session.statements) == 1
+    assert "paid_analysis_credits" in str(db_session.statements[0])
 
 
 def openrouter_response(content: str) -> httpx.Response:

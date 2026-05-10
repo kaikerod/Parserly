@@ -14,7 +14,7 @@ from uuid import UUID
 import httpx
 from fastapi import UploadFile
 from pydantic import ValidationError
-from sqlalchemy import case, func, or_, update
+from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -337,8 +337,6 @@ class AnalysisService:
         finally:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
-            if user is not None and user_reservation is not None and not persisted:
-                await self._release_user_analysis_reservation(user, user_reservation)
 
     async def _write_upload_to_temp_file(self, upload_file: UploadFile) -> Path:
         filename = upload_file.filename or ""
@@ -918,7 +916,7 @@ class AnalysisService:
         else:
             if user_reservation is None:
                 raise QuotaExceeded
-            analyses_used = user_reservation.analyses_used
+            analyses_used = await self._commit_user_analysis_usage(user, user_reservation)
 
         try:
             await self.db_session.commit()
@@ -942,79 +940,46 @@ class AnalysisService:
         if get_user_remaining_analyses(user) == 0:
             raise QuotaExceeded
 
-        consumed_paid_credit = normalize_analysis_count(user.analyses_used) >= FREE_ANALYSIS_LIMIT
-        reserve_result = await self.db_session.execute(
+        analyses_used = normalize_analysis_count(user.analyses_used)
+        consumed_paid_credit = analyses_used >= FREE_ANALYSIS_LIMIT
+        reserved_analyses_used = analyses_used if consumed_paid_credit else analyses_used + 1
+
+        return UserAnalysisReservation(
+            analyses_used=reserved_analyses_used,
+            consumed_paid_credit=consumed_paid_credit,
+        )
+
+    async def _commit_user_analysis_usage(
+        self,
+        user: User,
+        reservation: UserAnalysisReservation,
+    ) -> int:
+        usage_update = (
             update(User)
-            .where(
-                User.id == user.id,
-                or_(
-                    User.analyses_used < FREE_ANALYSIS_LIMIT,
-                    User.paid_analysis_credits > 0,
-                ),
-            )
-            .values(
-                analyses_used=case(
-                    (
-                        User.analyses_used < FREE_ANALYSIS_LIMIT,
-                        User.analyses_used + 1,
-                    ),
-                    else_=User.analyses_used,
-                ),
-                paid_analysis_credits=case(
-                    (
-                        User.analyses_used >= FREE_ANALYSIS_LIMIT,
-                        User.paid_analysis_credits - 1,
-                    ),
-                    else_=User.paid_analysis_credits,
-                ),
-                updated_at=func.now(),
-            )
+            .where(User.id == user.id)
+            .values(updated_at=func.now())
             .returning(User.analyses_used, User.paid_analysis_credits)
             .execution_options(synchronize_session=False)
         )
-        usage_row = reserve_result.one_or_none()
+
+        if reservation.consumed_paid_credit:
+            usage_update = usage_update.where(
+                User.analyses_used >= FREE_ANALYSIS_LIMIT,
+                User.paid_analysis_credits > 0,
+            ).values(paid_analysis_credits=User.paid_analysis_credits - 1)
+        else:
+            usage_update = usage_update.where(
+                User.analyses_used < FREE_ANALYSIS_LIMIT,
+            ).values(analyses_used=User.analyses_used + 1)
+
+        usage_result = await self.db_session.execute(usage_update)
+        usage_row = usage_result.one_or_none()
         if usage_row is None:
             await self.db_session.rollback()
             raise QuotaExceeded
-
-        try:
-            await self.db_session.commit()
-        except Exception:
-            await self.db_session.rollback()
-            raise
 
         analyses_used = normalize_analysis_count(usage_row[0])
         paid_analysis_credits = normalize_analysis_count(usage_row[1])
         user.analyses_used = analyses_used
         user.paid_analysis_credits = paid_analysis_credits
-
-        return UserAnalysisReservation(
-            analyses_used=analyses_used,
-            consumed_paid_credit=consumed_paid_credit,
-        )
-
-    async def _release_user_analysis_reservation(
-        self,
-        user: User,
-        reservation: UserAnalysisReservation,
-    ) -> None:
-        if reservation.consumed_paid_credit:
-            values = {
-                "paid_analysis_credits": User.paid_analysis_credits + 1,
-                "updated_at": func.now(),
-            }
-        else:
-            values = {
-                "analyses_used": case(
-                    (User.analyses_used > 0, User.analyses_used - 1),
-                    else_=0,
-                ),
-                "updated_at": func.now(),
-            }
-
-        await self.db_session.execute(update(User).where(User.id == user.id).values(**values))
-        try:
-            await self.db_session.commit()
-        except Exception:
-            await self.db_session.rollback()
-            raise
+        return analyses_used

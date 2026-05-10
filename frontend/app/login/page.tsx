@@ -3,7 +3,7 @@ import { LoginClient } from "@/components/auth/login-client";
 
 export const metadata: Metadata = {
   title: "Login | Parserly",
-  description: "Acesse sua conta Parserly por magic link usando o e-mail já cadastrado."
+  description: "Entre ou crie acesso no Parserly por magic link usando seu e-mail."
 };
 
 interface LoginPageProps {
@@ -17,7 +17,7 @@ interface LoginPageProps {
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   "missing-token": "O link de acesso não contém um token válido.",
   "invalid-link": "Este link expirou ou já foi usado. Solicite um novo acesso.",
-  "account-not-found": "Use o e-mail já cadastrado no Parserly para solicitar um novo link.",
+  "account-not-found": "Solicite um novo link de acesso para continuar.",
   "verify-unavailable": "Não foi possível verificar o link agora. Tente novamente em instantes."
 };
 

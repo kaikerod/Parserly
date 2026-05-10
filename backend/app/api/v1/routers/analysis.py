@@ -26,8 +26,10 @@ from app.core.quotas import (
     GUEST_ANALYSIS_COOKIE_NAME,
     GUEST_ANALYSIS_KEY_TTL_SECONDS,
     get_free_analyses_remaining,
+    get_guest_analyses_used_by_key,
     get_guest_analyses_used,
     get_user_remaining_analyses,
+    guest_analysis_client_key,
     guest_analysis_key,
     normalize_analysis_count,
     normalize_guest_id,
@@ -118,10 +120,16 @@ async def get_analysis_quota(
     request: Request,
     current_user: Annotated[User | None, Depends(get_optional_current_user)],
     redis_client: Annotated[Redis, Depends(get_redis_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> AnalysisQuotaResponse:
     if current_user is None:
         guest_id = normalize_guest_id(request.cookies.get(GUEST_ANALYSIS_COOKIE_NAME))
-        analyses_used = await get_guest_analyses_used(redis_client, guest_id)
+        analyses_used = await get_guest_quota_analyses_used(
+            redis_client=redis_client,
+            request=request,
+            guest_id=guest_id,
+            settings=settings,
+        )
         remaining_analyses = get_free_analyses_remaining(analyses_used)
         registration_required = remaining_analyses == 0
         return AnalysisQuotaResponse(
@@ -180,6 +188,7 @@ async def create_analysis(
 ) -> AnalysisResponse:
     guest_id: str | None = None
     guest_analyses_used: int | None = None
+    guest_quota_keys: list[str] = []
     concurrency_key: str | None = None
 
     try:
@@ -199,7 +208,15 @@ async def create_analysis(
                 ttl_seconds=ANALYSIS_CONCURRENCY_TTL_SECONDS,
             )
             set_guest_analysis_cookie(response, guest_id, settings)
-            guest_analyses_used = await reserve_guest_analysis(redis_client, guest_id)
+            guest_quota_keys = guest_analysis_quota_keys(
+                request=request,
+                settings=settings,
+                guest_id=guest_id,
+            )
+            guest_analyses_used = await reserve_guest_analysis(
+                redis_client,
+                guest_quota_keys,
+            )
         else:
             await enforce_analysis_rate_limits(
                 request=request,
@@ -241,7 +258,11 @@ async def create_analysis(
             },
         ) from exc
     except InvalidResumeFile as exc:
-        await release_reserved_guest_analysis(redis_client, guest_id, guest_analyses_used)
+        await release_reserved_guest_analysis(
+            redis_client,
+            guest_quota_keys,
+            guest_analyses_used,
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
@@ -254,7 +275,11 @@ async def create_analysis(
             },
         ) from exc
     except AIAnalysisUnavailable as exc:
-        await release_reserved_guest_analysis(redis_client, guest_id, guest_analyses_used)
+        await release_reserved_guest_analysis(
+            redis_client,
+            guest_quota_keys,
+            guest_analyses_used,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -266,14 +291,22 @@ async def create_analysis(
             },
         ) from exc
     except (RateLimitExceeded, ConcurrentRequestLimitExceeded) as exc:
-        await release_reserved_guest_analysis(redis_client, guest_id, guest_analyses_used)
+        await release_reserved_guest_analysis(
+            redis_client,
+            guest_quota_keys,
+            guest_analyses_used,
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many analysis requests.",
             headers=retry_after_headers(exc),
         ) from exc
     except Exception:
-        await release_reserved_guest_analysis(redis_client, guest_id, guest_analyses_used)
+        await release_reserved_guest_analysis(
+            redis_client,
+            guest_quota_keys,
+            guest_analyses_used,
+        )
         raise
     finally:
         try:
@@ -318,14 +351,20 @@ def set_guest_analysis_cookie(response: Response, guest_id: str, settings: Setti
     )
 
 
-async def reserve_guest_analysis(redis_client: Redis, guest_id: str) -> int:
-    key = guest_analysis_key(guest_id)
-    analyses_used = await redis_client.incr(key)
-    if analyses_used == 1:
-        await redis_client.expire(key, GUEST_ANALYSIS_KEY_TTL_SECONDS)
+async def reserve_guest_analysis(redis_client: Redis, quota_keys: list[str] | str) -> int:
+    keys = normalize_guest_quota_keys(quota_keys)
+    analyses_used_by_key: list[int] = []
 
+    for key in keys:
+        analyses_used = await redis_client.incr(key)
+        if analyses_used == 1:
+            await redis_client.expire(key, GUEST_ANALYSIS_KEY_TTL_SECONDS)
+        analyses_used_by_key.append(int(analyses_used))
+
+    analyses_used = max(analyses_used_by_key)
     if analyses_used > FREE_ANALYSIS_LIMIT:
-        await redis_client.decr(key)
+        for key in keys:
+            await redis_client.decr(key)
         raise GuestQuotaExceeded(analyses_used=FREE_ANALYSIS_LIMIT)
 
     return int(analyses_used)
@@ -333,13 +372,66 @@ async def reserve_guest_analysis(redis_client: Redis, guest_id: str) -> int:
 
 async def release_reserved_guest_analysis(
     redis_client: Redis,
-    guest_id: str | None,
+    quota_keys: list[str] | str | None,
     guest_analyses_used: int | None,
 ) -> None:
-    if guest_id is None or guest_analyses_used is None:
+    if not quota_keys or guest_analyses_used is None:
         return
 
-    await redis_client.decr(guest_analysis_key(guest_id))
+    for key in normalize_guest_quota_keys(quota_keys):
+        await redis_client.decr(key)
+
+
+async def get_guest_quota_analyses_used(
+    *,
+    redis_client: Redis,
+    request: Request,
+    guest_id: str | None,
+    settings: Settings,
+) -> int:
+    guest_used = await get_guest_analyses_used(redis_client, guest_id)
+    client_used = await get_guest_analyses_used_by_key(
+        redis_client,
+        guest_analysis_client_quota_key(request=request, settings=settings),
+    )
+    return max(guest_used, client_used)
+
+
+def guest_analysis_quota_keys(
+    *,
+    request: Request,
+    settings: Settings,
+    guest_id: str,
+) -> list[str]:
+    keys = [guest_analysis_key(guest_id)]
+    client_key = guest_analysis_client_quota_key(request=request, settings=settings)
+    if client_key is not None:
+        keys.append(client_key)
+    return normalize_guest_quota_keys(keys)
+
+
+def guest_analysis_client_quota_key(
+    *,
+    request: Request,
+    settings: Settings,
+) -> str | None:
+    return guest_analysis_client_key(
+        settings.secret_key,
+        client_ip_from_request(request),
+    )
+
+
+def normalize_guest_quota_keys(quota_keys: list[str] | str) -> list[str]:
+    if isinstance(quota_keys, str):
+        guest_id = normalize_guest_id(quota_keys)
+        raw_keys = [guest_analysis_key(guest_id) if guest_id is not None else quota_keys]
+    else:
+        raw_keys = quota_keys
+
+    deduplicated_keys = list(dict.fromkeys(key for key in raw_keys if key))
+    if not deduplicated_keys:
+        raise ValueError("at least one guest quota key is required")
+    return deduplicated_keys
 
 
 async def enforce_analysis_rate_limits(

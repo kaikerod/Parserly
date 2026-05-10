@@ -117,7 +117,11 @@ async def verify_magic_link(
     guest_id = normalize_guest_id(request.cookies.get(GUEST_ANALYSIS_COOKIE_NAME))
 
     try:
-        auth_session = await auth_service.verify_magic_link(token, guest_id=guest_id)
+        auth_session = await auth_service.verify_magic_link(
+            token,
+            guest_id=guest_id,
+            client_ip=client_ip_from_request(request),
+        )
     except InvalidMagicLinkToken as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

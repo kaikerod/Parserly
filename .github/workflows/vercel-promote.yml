@@ -11,11 +11,6 @@ on:
         description: Preview URL for parserly-web
         required: true
         type: string
-      run_migrations:
-        description: Run Alembic migrations before production promotion
-        required: true
-        default: true
-        type: boolean
 
 permissions:
   contents: read
@@ -39,7 +34,6 @@ jobs:
           node-version: "20"
 
       - name: Setup Python
-        if: ${{ inputs.run_migrations }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -55,7 +49,6 @@ jobs:
         run: node scripts/vercel-smoke.mjs
 
       - name: Run production migrations
-        if: ${{ inputs.run_migrations }}
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
@@ -65,7 +58,7 @@ jobs:
           fi
 
           if [ ! -f backend/alembic.ini ] && [ ! -f alembic.ini ]; then
-            echo "::error::Alembic is not configured yet. Add migrations or rerun with run_migrations=false only when the release has no schema changes."
+            echo "::error::Alembic is not configured. Add migrations before production promotion."
             exit 1
           fi
 
@@ -77,10 +70,6 @@ jobs:
           else
             python -m alembic -c alembic.ini upgrade head
           fi
-
-      - name: Confirm migration skip
-        if: ${{ ! inputs.run_migrations }}
-        run: echo "Alembic migration step was skipped for this promotion."
 
       - name: Install pinned Vercel CLI
         run: |
