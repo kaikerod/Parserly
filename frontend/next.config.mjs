@@ -98,6 +98,7 @@ const securityHeaders = [
 
 const apiRewriteRules = [
   "/api/v1/auth/request-link",
+  "/api/v1/auth/session",
   "/api/v1/auth/logout",
   "/api/v1/analysis",
   "/api/v1/analysis/:path*",

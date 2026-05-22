@@ -40,6 +40,28 @@ async def get_current_user(
     return user
 
 
+async def resolve_current_user_from_token(
+    access_token: str | None,
+    db_session: AsyncSession,
+    redis_client: Redis,
+    settings: Settings,
+) -> User | None:
+    if not access_token:
+        return None
+
+    try:
+        return await _get_user_from_access_token(
+            access_token=access_token,
+            db_session=db_session,
+            redis_client=redis_client,
+            settings=settings,
+        )
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise
+
+
 async def get_optional_current_user(
     request: Request,
     db_session: Annotated[AsyncSession, Depends(get_db_session)],

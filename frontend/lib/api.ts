@@ -3,10 +3,14 @@ import type {
   AnalysisQuotaResponse,
   AnalysisResponse
 } from "@/types/analysis";
-import type { RequestMagicLinkResponse, LogoutResponse } from "@/types/auth";
+import type { AuthSessionResponse, LogoutResponse, RequestMagicLinkResponse } from "@/types/auth";
 import type { CreateChargeResponse } from "@/types/payment";
 
 const API_PREFIX = "/api/v1";
+
+interface RequestOptions {
+  signal?: AbortSignal;
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -44,13 +48,31 @@ export async function requestMagicLink(email: string): Promise<RequestMagicLinkR
   );
 }
 
+export async function getAuthSession(options: RequestOptions = {}): Promise<AuthSessionResponse> {
+  const response = await fetch(apiPath("/auth/session"), {
+    method: "GET",
+    headers: {
+      Accept: "application/json"
+    },
+    credentials: "include",
+    cache: "no-store",
+    signal: options.signal
+  });
+
+  return parseJsonResponse<AuthSessionResponse>(
+    response,
+    "Nao foi possivel confirmar sua sessao."
+  );
+}
+
 export async function logout(): Promise<LogoutResponse> {
   const response = await fetch(apiPath("/auth/logout"), {
     method: "POST",
     headers: {
       Accept: "application/json"
     },
-    credentials: "include"
+    credentials: "include",
+    cache: "no-store"
   });
 
   return parseJsonResponse<LogoutResponse>(response, "Não foi possível encerrar a sessão.");
@@ -72,7 +94,11 @@ export async function submitResumeForAnalysis(file: File): Promise<AnalysisRespo
   );
 }
 
-export async function listAnalyses(limit = 10, offset = 0): Promise<AnalysisHistoryResponse> {
+export async function listAnalyses(
+  limit = 10,
+  offset = 0,
+  options: RequestOptions = {}
+): Promise<AnalysisHistoryResponse> {
   const params = new URLSearchParams({
     limit: String(limit),
     offset: String(offset)
@@ -82,7 +108,9 @@ export async function listAnalyses(limit = 10, offset = 0): Promise<AnalysisHist
     headers: {
       Accept: "application/json"
     },
-    credentials: "include"
+    credentials: "include",
+    cache: "no-store",
+    signal: options.signal
   });
 
   return parseJsonResponse<AnalysisHistoryResponse>(
@@ -91,13 +119,18 @@ export async function listAnalyses(limit = 10, offset = 0): Promise<AnalysisHist
   );
 }
 
-export async function getAnalysisById(id: string): Promise<AnalysisResponse> {
+export async function getAnalysisById(
+  id: string,
+  options: RequestOptions = {}
+): Promise<AnalysisResponse> {
   const response = await fetch(apiPath(`/analysis/${encodeURIComponent(id)}`), {
     method: "GET",
     headers: {
       Accept: "application/json"
     },
-    credentials: "include"
+    credentials: "include",
+    cache: "no-store",
+    signal: options.signal
   });
 
   return parseJsonResponse<AnalysisResponse>(
@@ -106,13 +139,15 @@ export async function getAnalysisById(id: string): Promise<AnalysisResponse> {
   );
 }
 
-export async function getAnalysisQuota(): Promise<AnalysisQuotaResponse> {
+export async function getAnalysisQuota(options: RequestOptions = {}): Promise<AnalysisQuotaResponse> {
   const response = await fetch(apiPath("/analysis/quota"), {
     method: "GET",
     headers: {
       Accept: "application/json"
     },
-    credentials: "include"
+    credentials: "include",
+    cache: "no-store",
+    signal: options.signal
   });
 
   return parseJsonResponse<AnalysisQuotaResponse>(

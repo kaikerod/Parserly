@@ -62,6 +62,7 @@ async function readSource(relativePath) {
 function expectedApiRewrites(apiBaseUrl) {
   return [
     "/api/v1/auth/request-link",
+    "/api/v1/auth/session",
     "/api/v1/auth/logout",
     "/api/v1/analysis",
     "/api/v1/analysis/:path*",
@@ -171,12 +172,67 @@ test("authenticated dashboard loads and opens persistent analysis history", asyn
   assert.match(api, /apiPath\(`\/analysis\?\$\{params\.toString\(\)\}`\)/);
   assert.match(api, /apiPath\(`\/analysis\/\$\{encodeURIComponent\(id\)\}`\)/);
 
-  assert.match(dashboard, /const history = await listAnalyses\(\)/);
-  assert.match(dashboard, /if \(!isAuthenticated\) \{\s+return;\s+\}/);
+  assert.match(dashboard, /const history = await listAnalyses\(10, 0, \{ signal \}\)/);
+  assert.match(dashboard, /if \(!isAuthenticated \|\| isLoadingAuth\) \{\s+return;\s+\}/);
+  assert.match(dashboard, /const \[isLoadingData, setIsLoadingData\] = useState\(false\)/);
   assert.match(dashboard, /void loadAnalysisHistory\(\)/);
-  assert.match(dashboard, /const savedAnalysis = await getAnalysisById\(item\.id\)/);
+  assert.match(
+    dashboard,
+    /const savedAnalysis = await getAnalysisById\(item\.id, \{ signal: controller\.signal \}\)/
+  );
   assert.match(dashboard, /<AnalysisHistoryPanel/);
   assert.match(dashboard, /items=\{analysisHistory\}/);
+});
+
+test("dashboard resolves auth session before exposing guest navigation", async () => {
+  const api = await readSource("lib/api.ts");
+  const hook = await readSource("hooks/use-auth-session.ts");
+  const dashboard = await readSource("components/dashboard/dashboard-client.tsx");
+
+  assert.match(api, /export async function getAuthSession/);
+  assert.match(api, /apiPath\("\/auth\/session"\)/);
+  assert.match(api, /credentials: "include"/);
+  assert.match(api, /cache: "no-store"/);
+
+  assert.match(hook, /export interface AuthSessionState/);
+  assert.match(hook, /isAuthenticated: boolean/);
+  assert.match(hook, /isLoadingAuth: boolean/);
+  assert.match(hook, /authError: string \| null/);
+  assert.match(hook, /refreshSession: \(\) => Promise<void>/);
+  assert.match(hook, /logout: \(\) => Promise<void>/);
+  assert.match(hook, /void resolveSession\(controller\.signal\)/);
+
+  assert.match(dashboard, /isLoadingAuth \? \(/);
+  assert.match(dashboard, /Confirmando sessao/);
+  assert.match(dashboard, /\) : isAuthenticated \? \(/);
+  assert.match(dashboard, /href="\/login"/);
+});
+
+test("dashboard history fetches only after confirmed auth and ignores stale requests", async () => {
+  const dashboard = await readSource("components/dashboard/dashboard-client.tsx");
+
+  assert.match(dashboard, /if \(!isAuthenticated \|\| isLoadingAuth\) \{\s+return;\s+\}/);
+  assert.match(dashboard, /new AbortController\(\)/);
+  assert.match(dashboard, /controller\.abort\(\)/);
+  assert.match(dashboard, /historyRequestRef\.current !== requestId/);
+  assert.match(dashboard, /getAnalysisById\(item\.id, \{ signal: controller\.signal \}\)/);
+  assert.match(dashboard, /isAuthLoading=\{isLoadingAuth\}/);
+  assert.match(dashboard, /!isAuthLoading && !isLoading && items\.length === 0/);
+});
+
+test("dashboard logout clears user-specific history and selected report state", async () => {
+  const dashboard = await readSource("components/dashboard/dashboard-client.tsx");
+
+  const clearIndex = dashboard.indexOf("clearUserSpecificState();");
+  const logoutIndex = dashboard.indexOf("await endSession();");
+
+  assert.ok(clearIndex > -1, "clearUserSpecificState is called");
+  assert.ok(logoutIndex > clearIndex, "session logout runs after user-specific state is cleared");
+  assert.match(dashboard, /setAnalysisHistory\(\[\]\)/);
+  assert.match(dashboard, /setHistoryTotal\(0\)/);
+  assert.match(dashboard, /setSelectedHistoryId\(null\)/);
+  assert.match(dashboard, /setHistoryError\(null\)/);
+  assert.match(dashboard, /setAnalysis\(null\)/);
 });
 
 test("login page is framed as unified passwordless access", async () => {

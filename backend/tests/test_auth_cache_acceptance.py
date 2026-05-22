@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.api.v1.routers.auth import get_auth_service
+from app.api.v1.routers.auth import get_auth_service, get_auth_session_user
 from app.main import app
 from app.services.auth_service import InvalidMagicLinkToken, MagicLinkRequestResult
 
@@ -40,6 +40,13 @@ def override_auth_service() -> FakeAuthService:
     return FakeAuthService()
 
 
+def override_auth_session_user(user: SimpleNamespace | None):
+    async def _override_auth_session_user() -> SimpleNamespace | None:
+        return user
+
+    return _override_auth_session_user
+
+
 def test_auth_request_link_success_and_validation_errors_are_not_cached() -> None:
     app.dependency_overrides[get_auth_service] = override_auth_service
     try:
@@ -71,3 +78,35 @@ def test_auth_verify_and_logout_errors_are_not_cached() -> None:
     assert verify_response.headers["cache-control"] == "no-store"
     assert logout_response.status_code == 405
     assert logout_response.headers["cache-control"] == "no-store"
+
+
+def test_auth_session_reports_valid_session_without_side_effects() -> None:
+    user_id = uuid4()
+    app.dependency_overrides[get_auth_session_user] = override_auth_session_user(
+        SimpleNamespace(id=user_id)
+    )
+    try:
+        with TestClient(app) as client:
+            authenticated_response = client.get("/api/v1/auth/session")
+    finally:
+        app.dependency_overrides.clear()
+
+    app.dependency_overrides[get_auth_session_user] = override_auth_session_user(None)
+    try:
+        with TestClient(app) as client:
+            anonymous_response = client.get("/api/v1/auth/session")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert authenticated_response.status_code == 200
+    assert authenticated_response.headers["cache-control"] == "no-store"
+    assert authenticated_response.json() == {
+        "authenticated": True,
+        "user_id": str(user_id),
+    }
+    assert anonymous_response.status_code == 200
+    assert anonymous_response.headers["cache-control"] == "no-store"
+    assert anonymous_response.json() == {
+        "authenticated": False,
+        "user_id": None,
+    }

@@ -4,6 +4,11 @@ export interface RequestMagicLinkResponse {
   magic_link?: string | null;
 }
 
+export interface AuthSessionResponse {
+  authenticated: boolean;
+  user_id?: string | null;
+}
+
 export interface LogoutResponse {
   message: string;
 }

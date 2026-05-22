@@ -54,5 +54,10 @@ class VerifyMagicLinkResponse(BaseModel):
     requires_payment: bool = False
 
 
+class AuthSessionResponse(BaseModel):
+    authenticated: bool
+    user_id: UUID | None = None
+
+
 class LogoutResponse(BaseModel):
     message: str

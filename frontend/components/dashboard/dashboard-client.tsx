@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -25,9 +25,9 @@ import {
   getAnalysisById,
   getAnalysisQuota,
   listAnalyses,
-  logout,
   submitResumeForAnalysis
 } from "@/lib/api";
+import { useAuthSession } from "@/hooks/use-auth-session";
 import type { AnalysisHistoryItem, AnalysisResponse } from "@/types/analysis";
 import { AnalysisReport } from "./analysis-report";
 import { Dropzone } from "./dropzone";
@@ -54,6 +54,12 @@ const GUEST_DASHBOARD_METRICS = [
   { label: "Sem cadastro", value: "Teste grátis", detail: "até o limite inicial" },
   { label: "Arquivos", value: "PDF/DOCX", detail: "até 5 MB" },
   { label: "Após limite", value: "Cadastro", detail: "magic link por e-mail" }
+];
+
+const AUTH_RESOLVING_DASHBOARD_METRICS = [
+  { label: "Sessao", value: "Confirmando", detail: "validacao segura" },
+  { label: "Arquivos", value: "PDF/DOCX", detail: "ate 5 MB" },
+  { label: "Historico", value: "Aguarde", detail: "carregamento privado" }
 ];
 
 const PAYMENT_REQUIRED_NOTICE =
@@ -101,11 +107,26 @@ interface DashboardClientProps {
   paymentRequired?: boolean;
 }
 
-export function DashboardClient({ isAuthenticated, paymentRequired = false }: DashboardClientProps) {
+export function DashboardClient({
+  isAuthenticated: initialIsAuthenticated,
+  paymentRequired = false
+}: DashboardClientProps) {
   const router = useRouter();
-  const dashboardMetrics = isAuthenticated
-    ? AUTHENTICATED_DASHBOARD_METRICS
-    : GUEST_DASHBOARD_METRICS;
+  const {
+    isAuthenticated,
+    isLoadingAuth,
+    authError,
+    refreshSession,
+    logout: endSession
+  } = useAuthSession(initialIsAuthenticated);
+  const dashboardMetrics = isLoadingAuth
+    ? AUTH_RESOLVING_DASHBOARD_METRICS
+    : isAuthenticated
+      ? AUTHENTICATED_DASHBOARD_METRICS
+      : GUEST_DASHBOARD_METRICS;
+  const historyRequestRef = useRef(0);
+  const historyDetailAbortRef = useRef<AbortController | null>(null);
+  const selectedHistoryIdRef = useRef<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
@@ -113,8 +134,7 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
   const [isHistoryDetailLoading, setIsHistoryDetailLoading] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [submissionMode, setSubmissionMode] = useState<SubmissionMode>("manual");
@@ -141,21 +161,62 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
     };
   }, []);
 
-  const loadAnalysisHistory = useCallback(async () => {
-    if (!isAuthenticated) {
+  useEffect(() => {
+    selectedHistoryIdRef.current = selectedHistoryId;
+  }, [selectedHistoryId]);
+
+  const clearUserSpecificState = useCallback(() => {
+    historyRequestRef.current += 1;
+    historyDetailAbortRef.current?.abort();
+    historyDetailAbortRef.current = null;
+    const hadSelectedHistory = selectedHistoryIdRef.current !== null;
+    selectedHistoryIdRef.current = null;
+
+    if (hadSelectedHistory) {
+      setAnalysis(null);
+    }
+
+    setAnalysisHistory([]);
+    setHistoryTotal(0);
+    setHistoryError(null);
+    setSelectedHistoryId(null);
+    setIsHistoryDetailLoading(false);
+    setIsLoadingData(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      historyRequestRef.current += 1;
+      historyDetailAbortRef.current?.abort();
+    };
+  }, []);
+
+  const loadAnalysisHistory = useCallback(async (signal?: AbortSignal) => {
+    if (!isAuthenticated || isLoadingAuth) {
       return;
     }
 
-    setIsHistoryLoading(true);
+    const requestId = historyRequestRef.current + 1;
+    historyRequestRef.current = requestId;
+    setIsLoadingData(true);
     setHistoryError(null);
 
     try {
-      const history = await listAnalyses();
+      const history = await listAnalyses(10, 0, { signal });
+      if (signal?.aborted || historyRequestRef.current !== requestId) {
+        return;
+      }
+
       setAnalysisHistory(history.items);
       setHistoryTotal(history.total);
     } catch (requestError) {
+      if (isAbortError(requestError) || signal?.aborted || historyRequestRef.current !== requestId) {
+        return;
+      }
+
       if (requestError instanceof ApiError && requestError.status === 401) {
-        router.replace("/login");
+        clearUserSpecificState();
+        await refreshSession();
         return;
       }
 
@@ -165,12 +226,14 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
           : "Não foi possível carregar o histórico."
       );
     } finally {
-      setIsHistoryLoading(false);
+      if (!signal?.aborted && historyRequestRef.current === requestId) {
+        setIsLoadingData(false);
+      }
     }
-  }, [isAuthenticated, router]);
+  }, [clearUserSpecificState, isAuthenticated, isLoadingAuth, refreshSession]);
 
   useEffect(() => {
-    if (!isAuthenticated || !paymentRequired || autoOpenedPayment) {
+    if (isLoadingAuth || !isAuthenticated || !paymentRequired || autoOpenedPayment) {
       return;
     }
 
@@ -178,11 +241,26 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
     setError(null);
     setAutoOpenedPayment(true);
     window.history.replaceState(null, "", "/dashboard");
-  }, [autoOpenedPayment, isAuthenticated, paymentRequired]);
+  }, [autoOpenedPayment, isAuthenticated, isLoadingAuth, paymentRequired]);
 
   useEffect(() => {
-    void loadAnalysisHistory();
-  }, [loadAnalysisHistory]);
+    if (isLoadingAuth) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      clearUserSpecificState();
+      return;
+    }
+
+    const controller = new AbortController();
+    void loadAnalysisHistory(controller.signal);
+
+    return () => {
+      controller.abort();
+      historyRequestRef.current += 1;
+    };
+  }, [clearUserSpecificState, isAuthenticated, isLoadingAuth, loadAnalysisHistory]);
 
   const runAnalysis = useCallback(async (file: File, mode: SubmissionMode = "manual") => {
     setSelectedFile(file);
@@ -190,6 +268,7 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
     setError(null);
     setPaymentNotice(null);
     setSubmissionMode(mode);
+    selectedHistoryIdRef.current = null;
     setSelectedHistoryId(null);
     setIsSubmitting(true);
 
@@ -211,6 +290,7 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
       requestStep = "analysis";
       const result = await submitResumeForAnalysis(file);
       setAnalysis(result);
+      selectedHistoryIdRef.current = result.id;
       setSelectedHistoryId(result.id);
       setPaywallOpen(false);
       setPendingFile(null);
@@ -238,6 +318,15 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
   }, [isAuthenticated, loadAnalysisHistory, router]);
 
   const handleSelectHistoryItem = useCallback(async (item: AnalysisHistoryItem) => {
+    if (!isAuthenticated || isLoadingAuth) {
+      return;
+    }
+
+    historyDetailAbortRef.current?.abort();
+    const controller = new AbortController();
+    historyDetailAbortRef.current = controller;
+
+    selectedHistoryIdRef.current = item.id;
     setSelectedHistoryId(item.id);
     setIsHistoryDetailLoading(true);
     setHistoryError(null);
@@ -245,13 +334,22 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
     setPaymentNotice(null);
 
     try {
-      const savedAnalysis = await getAnalysisById(item.id);
+      const savedAnalysis = await getAnalysisById(item.id, { signal: controller.signal });
+      if (controller.signal.aborted || historyDetailAbortRef.current !== controller) {
+        return;
+      }
+
       setAnalysis(savedAnalysis);
       setSelectedFile(null);
       setPendingFile(null);
     } catch (requestError) {
+      if (isAbortError(requestError) || historyDetailAbortRef.current !== controller) {
+        return;
+      }
+
       if (requestError instanceof ApiError && requestError.status === 401) {
-        router.replace("/login");
+        clearUserSpecificState();
+        await refreshSession();
         return;
       }
 
@@ -261,20 +359,23 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
           : "Não foi possível abrir a análise salva."
       );
     } finally {
-      setIsHistoryDetailLoading(false);
+      if (historyDetailAbortRef.current === controller) {
+        historyDetailAbortRef.current = null;
+        setIsHistoryDetailLoading(false);
+      }
     }
-  }, [router]);
+  }, [clearUserSpecificState, isAuthenticated, isLoadingAuth, refreshSession]);
 
   const handleLogout = useCallback(async () => {
-    setIsLoggingOut(true);
+    clearUserSpecificState();
 
     try {
-      await logout();
+      await endSession();
     } finally {
       router.replace("/login");
       router.refresh();
     }
-  }, [router]);
+  }, [clearUserSpecificState, endSession, router]);
 
   const handlePaymentConfirmed = useCallback(() => {
     setPaywallOpen(false);
@@ -344,18 +445,22 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
             ))}
           </div>
 
-          {isAuthenticated ? (
+          {isLoadingAuth ? (
+            <button
+              type="button"
+              disabled
+              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/60 disabled:cursor-wait disabled:opacity-80"
+            >
+              <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
+              Confirmando sessao
+            </button>
+          ) : isAuthenticated ? (
             <button
               type="button"
               onClick={handleLogout}
-              disabled={isLoggingOut}
               className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isLoggingOut ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <LogOut className="h-4 w-4" aria-hidden="true" />
-              )}
+              <LogOut className="h-4 w-4" aria-hidden="true" />
               Sair
             </button>
           ) : (
@@ -377,6 +482,23 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
             </div>
           )}
         </nav>
+
+        {authError ? (
+          <div className="flex items-start justify-between gap-3 rounded-md border border-amber/35 bg-amber/10 px-4 py-3 text-sm text-paper">
+            <div className="flex min-w-0 items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber" aria-hidden="true" />
+              <p>{authError}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshSession()}
+              className="focus-ring inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/45 hover:bg-fog"
+            >
+              <RotateCw className="h-4 w-4" aria-hidden="true" />
+              Tentar novamente
+            </button>
+          </div>
+        ) : null}
 
         <section
           aria-live="polite"
@@ -504,11 +626,12 @@ export function DashboardClient({ isAuthenticated, paymentRequired = false }: Da
             ) : null}
             </section>
 
-            {isAuthenticated ? (
+            {isLoadingAuth || isAuthenticated ? (
               <AnalysisHistoryPanel
                 items={analysisHistory}
                 total={historyTotal}
-                isLoading={isHistoryLoading}
+                isAuthLoading={isLoadingAuth}
+                isLoading={isLoadingData}
                 isDetailLoading={isHistoryDetailLoading}
                 selectedId={selectedHistoryId}
                 error={historyError}
@@ -556,6 +679,7 @@ function PaymentActionButton({ label, onClick }: { label: string; onClick: () =>
 interface AnalysisHistoryPanelProps {
   items: AnalysisHistoryItem[];
   total: number;
+  isAuthLoading: boolean;
   isLoading: boolean;
   isDetailLoading: boolean;
   selectedId: string | null;
@@ -567,6 +691,7 @@ interface AnalysisHistoryPanelProps {
 function AnalysisHistoryPanel({
   items,
   total,
+  isAuthLoading,
   isLoading,
   isDetailLoading,
   selectedId,
@@ -590,11 +715,11 @@ function AnalysisHistoryPanel({
         <button
           type="button"
           onClick={onRefresh}
-          disabled={isLoading}
+          disabled={isAuthLoading || isLoading}
           className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/70 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
           aria-label="Atualizar histórico"
         >
-          {isLoading ? (
+          {isAuthLoading || isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           ) : (
             <RotateCw className="h-4 w-4" aria-hidden="true" />
@@ -610,21 +735,28 @@ function AnalysisHistoryPanel({
       ) : null}
 
       <div className="mt-4 space-y-2">
-        {isLoading && items.length === 0 ? (
+        {isAuthLoading ? (
+          <div className="flex items-center gap-3 rounded-md border border-line/70 bg-night/70 px-3 py-4 text-sm text-paper/60">
+            <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
+            Confirmando sessao antes de carregar o historico...
+          </div>
+        ) : null}
+
+        {!isAuthLoading && isLoading && items.length === 0 ? (
           <div className="flex items-center gap-3 rounded-md border border-line/70 bg-night/70 px-3 py-4 text-sm text-paper/60">
             <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
             Carregando histórico...
           </div>
         ) : null}
 
-        {!isLoading && items.length === 0 ? (
+        {!isAuthLoading && !isLoading && items.length === 0 ? (
           <div className="rounded-md border border-dashed border-line/70 bg-night/50 px-4 py-5 text-sm text-paper/60">
             <History className="mb-3 h-5 w-5 text-paper/35" aria-hidden="true" />
             Nenhuma análise salva ainda.
           </div>
         ) : null}
 
-        {items.map((item) => {
+        {!isAuthLoading && items.map((item) => {
           const isSelected = selectedId === item.id;
           const isOpening = isSelected && isDetailLoading;
 
@@ -735,6 +867,10 @@ function resolveAnalysisError(error: unknown, requestStep: AnalysisRequestStep) 
   }
 
   return error instanceof Error ? error.message : "Não foi possível concluir a análise.";
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

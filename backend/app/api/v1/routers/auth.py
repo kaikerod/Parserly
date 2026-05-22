@@ -12,7 +12,10 @@ from app.core.database import get_db_session
 from app.core.quotas import GUEST_ANALYSIS_COOKIE_NAME, normalize_guest_id
 from app.core.rate_limit import client_ip_from_request
 from app.core.redis import get_redis_client
+from app.core.security import resolve_current_user_from_token
+from app.models.user import User
 from app.schemas.auth import (
+    AuthSessionResponse,
     LogoutResponse,
     RequestMagicLinkBody,
     RequestMagicLinkResponse,
@@ -41,6 +44,24 @@ def get_auth_service(
         settings=settings,
         email_service=email_service,
     )
+
+
+async def get_auth_session_user(
+    request: Request,
+    db_session: Annotated[AsyncSession, Depends(get_db_session)],
+    redis_client: Annotated[Redis, Depends(get_redis_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    access_token: Annotated[str | None, Cookie(alias=_settings.auth_cookie_name)] = None,
+) -> User | None:
+    user = await resolve_current_user_from_token(
+        access_token=access_token,
+        db_session=db_session,
+        redis_client=redis_client,
+        settings=settings,
+    )
+    if user is not None:
+        request.state.user_id = str(user.id)
+    return user
 
 
 def set_auth_cookie(response: Response, access_token: str, max_age: int) -> None:
@@ -138,6 +159,16 @@ async def verify_magic_link(
         message="Authenticated.",
         user_id=auth_session.user_id,
         requires_payment=auth_session.requires_payment,
+    )
+
+
+@router.get("/session", response_model=AuthSessionResponse)
+async def get_auth_session(
+    current_user: Annotated[User | None, Depends(get_auth_session_user)],
+) -> AuthSessionResponse:
+    return AuthSessionResponse(
+        authenticated=current_user is not None,
+        user_id=current_user.id if current_user is not None else None,
     )
 
 
