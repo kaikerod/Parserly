@@ -745,19 +745,19 @@ function AnalysisHistoryPanel({
                 onClick={() => onPageChange(currentPage - 1)}
                 disabled={!canGoPrevious}
                 className="focus-ring inline-flex h-10 items-center justify-center border-r border-line/70 px-3 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="P�gina anterior"
+                aria-label="Página anterior"
               >
                 <ChevronLeft className="h-4 w-4" aria-hidden="true" />
               </button>
               <span className="px-3">
-                P�gina {currentPage + 1} de {totalPages}
+                Página {currentPage + 1} de {totalPages}
               </span>
               <button
                 type="button"
                 onClick={() => onPageChange(currentPage + 1)}
                 disabled={!canGoNext}
                 className="focus-ring inline-flex h-10 items-center justify-center border-l border-line/70 px-3 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Pr�xima p�gina"
+                aria-label="Próxima página"
               >
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -858,7 +858,7 @@ function AnalysisHistoryPanel({
               onClick={() => onPageChange(currentPage - 1)}
               disabled={!canGoPrevious}
               className="focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line/70 bg-night px-3 font-semibold text-paper/75 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="P�gina anterior"
+              aria-label="Página anterior"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
               Anterior
@@ -868,9 +868,9 @@ function AnalysisHistoryPanel({
               onClick={() => onPageChange(currentPage + 1)}
               disabled={!canGoNext}
               className="focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line/70 bg-night px-3 font-semibold text-paper/75 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="Pr�xima p�gina"
+              aria-label="Próxima página"
             >
-              Pr�xima
+              Próxima
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
