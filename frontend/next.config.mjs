@@ -52,7 +52,7 @@ function isParserlyImmutableDeploymentUrl(url) {
   return /^[a-z0-9]+$/.test(deploymentId);
 }
 
-const immutableAssetCacheHeaders = [
+const immutablePublicAssetCacheHeaders = [
   {
     key: "Cache-Control",
     value: "public, max-age=31536000, immutable"
@@ -98,6 +98,7 @@ const securityHeaders = [
 
 const apiRewriteRules = [
   "/api/v1/auth/request-link",
+  "/api/v1/auth/google/start",
   "/api/v1/auth/session",
   "/api/v1/auth/logout",
   "/api/v1/analysis",
@@ -121,12 +122,8 @@ const nextConfig = {
         headers: securityHeaders
       },
       {
-        source: "/_next/static/:path*",
-        headers: immutableAssetCacheHeaders
-      },
-      {
         source: "/icon.svg",
-        headers: immutableAssetCacheHeaders
+        headers: immutablePublicAssetCacheHeaders
       },
       {
         source: "/login",
@@ -138,6 +135,10 @@ const nextConfig = {
       },
       {
         source: "/auth/verify",
+        headers: noStoreHeaders
+      },
+      {
+        source: "/auth/google/callback",
         headers: noStoreHeaders
       },
       {

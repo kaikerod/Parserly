@@ -62,6 +62,7 @@ async function readSource(relativePath) {
 function expectedApiRewrites(apiBaseUrl) {
   return [
     "/api/v1/auth/request-link",
+    "/api/v1/auth/google/start",
     "/api/v1/auth/session",
     "/api/v1/auth/logout",
     "/api/v1/analysis",
@@ -115,17 +116,16 @@ test("production rewrites default to the canonical API alias on Vercel", async (
   assert.deepEqual(rewrites, expectedApiRewrites("https://parserly-api.vercel.app"));
 });
 
-test("deploy headers cache only immutable assets and keep app/payment/API paths private", async () => {
+test("deploy headers leave Next static chunks managed and keep app/payment/API paths private", async () => {
   const { default: nextConfig } = await importNextConfig();
   const headers = await nextConfig.headers();
   const bySource = Object.fromEntries(headers.map((entry) => [entry.source, entry.headers]));
 
-  assert.equal(
-    bySource["/_next/static/:path*"][0].value,
-    "public, max-age=31536000, immutable"
-  );
+  assert.equal(bySource["/_next/static/:path*"], undefined);
+  assert.equal(bySource["/icon.svg"][0].value, "public, max-age=31536000, immutable");
   assert.equal(bySource["/dashboard"][0].value, "no-store, max-age=0");
   assert.equal(bySource["/auth/verify"][0].value, "no-store, max-age=0");
+  assert.equal(bySource["/auth/google/callback"][0].value, "no-store, max-age=0");
   assert.equal(bySource["/api/v1/:path*"][0].value, "no-store, max-age=0");
   assert.ok(
     bySource["/(.*)"].some(
@@ -248,6 +248,43 @@ test("login page is framed as unified passwordless access", async () => {
   assert.match(loginPage, /Entre ou crie acesso no Parserly por magic link/);
   assert.match(loginPage, /const isRegistrationIntent = intentCode === "registration" \|\| reasonCode === "free-limit"/);
   assert.match(loginPage, /intent=\{isRegistrationIntent \? "registration" : "login"\}/);
+});
+
+test("login page shows Google OAuth access next to magic link", async () => {
+  const loginClient = await readSource("components/auth/login-client.tsx");
+  const loginPage = await readSource("app/login/page.tsx");
+  const api = await readSource("lib/api.ts");
+
+  assert.match(api, /export function googleOAuthStartPath/);
+  assert.match(api, /apiPath\("\/auth\/google\/start"\)/);
+  assert.match(loginClient, /href=\{googleOAuthStartPath\(\)\}/);
+  assert.match(loginClient, /Continuar com Google/);
+  assert.match(loginClient, /Cadastrar com Google/);
+  assert.doesNotMatch(loginPage, /NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED/);
+});
+
+test("Google OAuth callback forwards cookies and maps safe errors", async () => {
+  const callbackRoute = await readSource("app/auth/google/callback/route.ts");
+  const loginPage = await readSource("app/login/page.tsx");
+
+  assert.match(callbackRoute, /forwardSearchParam\(request, callbackUrl, "code"\)/);
+  assert.match(callbackRoute, /forwardSearchParam\(request, callbackUrl, "state"\)/);
+  assert.match(callbackRoute, /forwardSearchParam\(request, callbackUrl, "error"\)/);
+  assert.match(callbackRoute, /Cookie: cookieHeader/);
+  assert.match(callbackRoute, /appendSetCookieHeaders\(response, backendResponse\)/);
+  assert.match(callbackRoute, /getSetCookie/);
+  assert.match(callbackRoute, /NextResponse\.redirect\(createPublicUrl\(request, "\/dashboard"\)\)/);
+  assert.match(callbackRoute, /"google-oauth-invalid-state"/);
+  assert.match(callbackRoute, /"google-oauth-denied"/);
+  assert.match(callbackRoute, /"google-email-unverified"/);
+  assert.match(callbackRoute, /"google-account-conflict"/);
+  assert.match(callbackRoute, /"google-oauth-unavailable"/);
+
+  assert.match(loginPage, /"google-oauth-invalid-state"/);
+  assert.match(loginPage, /"google-oauth-denied"/);
+  assert.match(loginPage, /"google-email-unverified"/);
+  assert.match(loginPage, /"google-account-conflict"/);
+  assert.match(loginPage, /"google-oauth-unavailable"/);
 });
 
 test("paywall creates PIX charge, listens for confirmation, and handles expiration", async () => {

@@ -31,6 +31,10 @@ export function apiPath(path: string) {
   return `${API_PREFIX}${normalizedPath}`;
 }
 
+export function googleOAuthStartPath() {
+  return apiPath("/auth/google/start");
+}
+
 export async function requestMagicLink(email: string): Promise<RequestMagicLinkResponse> {
   const response = await fetch(apiPath("/auth/request-link"), {
     method: "POST",

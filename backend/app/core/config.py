@@ -50,6 +50,19 @@ class Settings(BaseSettings):
     auth_cookie_name: str = "access_token"
     auth_cookie_secure: bool = True
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "strict"
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_oauth_redirect_uri: str = ""
+    google_oauth_state_cookie_name: str = "google_oauth_state"
+    google_oauth_state_ttl_seconds: int = 10 * 60
+
+    @property
+    def google_oauth_configured(self) -> bool:
+        return bool(
+            self.google_client_id.strip()
+            and self.google_client_secret.strip()
+            and self.google_oauth_redirect_uri.strip()
+        )
 
     @field_validator("database_url", mode="before")
     @classmethod

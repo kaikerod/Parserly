@@ -58,7 +58,12 @@ class User(Base):
         back_populates="user",
         passive_deletes=True,
     )
+    identities: Mapped[list[UserIdentity]] = relationship(
+        back_populates="user",
+        passive_deletes=True,
+    )
 
 
 from app.models.analysis import Analysis  # noqa: E402
 from app.models.payment import Payment  # noqa: E402
+from app.models.user_identity import UserIdentity  # noqa: E402

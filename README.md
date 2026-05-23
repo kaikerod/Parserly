@@ -62,6 +62,11 @@ As variáveis essenciais estão no arquivo `.env.example`. Não esqueça de conf
 - `API_PUBLIC_URL` (URL pública da API usada nos webhooks)
 - `MERCADOPAGO_ACCESS_TOKEN` (Para pagamentos)
 - `MERCADOPAGO_WEBHOOK_SECRET` (Para validação de webhooks)
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` (Para login com Google)
+
+Para Google OAuth local, registre no Google Cloud Console o redirect URI
+`http://localhost:3000/auth/google/callback`. Em producao, registre a URL publica
+equivalente do frontend, por exemplo `https://parserly.vercel.app/auth/google/callback`.
 
 ### Operacao de Banco em Producao
 
@@ -136,6 +141,11 @@ Key variables are listed in `.env.example`. Essential configurations:
 - `API_PUBLIC_URL` (Public API URL used by webhooks)
 - `MERCADOPAGO_ACCESS_TOKEN` (For Payments)
 - `MERCADOPAGO_WEBHOOK_SECRET` (For webhook validation)
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` (For Google login)
+
+For local Google OAuth, register this redirect URI in Google Cloud Console:
+`http://localhost:3000/auth/google/callback`. In production, register the equivalent
+public frontend URL, for example `https://parserly.vercel.app/auth/google/callback`.
 
 ### Production Database Operations
 

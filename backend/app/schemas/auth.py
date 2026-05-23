@@ -25,21 +25,25 @@ def _parse_email_address(value: str) -> tuple[str, str]:
     return parseaddr(value)
 
 
+def normalize_email_address(value: str) -> str:
+    email = value.strip()
+    if not email or any(char in email for char in ("\r", "\n")):
+        raise ValueError("invalid email address")
+
+    _, parsed_email = _parse_email_address(email)
+    if parsed_email != email or not _EMAIL_RE.fullmatch(email):
+        raise ValueError("invalid email address")
+
+    return email.lower()
+
+
 class RequestMagicLinkBody(BaseModel):
     email: str = Field(..., min_length=3, max_length=254)
 
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        email = value.strip()
-        if not email or any(char in email for char in ("\r", "\n")):
-            raise ValueError("invalid email address")
-
-        _, parsed_email = _parse_email_address(email)
-        if parsed_email != email or not _EMAIL_RE.fullmatch(email):
-            raise ValueError("invalid email address")
-
-        return email.lower()
+        return normalize_email_address(value)
 
 
 class RequestMagicLinkResponse(BaseModel):
@@ -52,6 +56,11 @@ class VerifyMagicLinkResponse(BaseModel):
     message: str
     user_id: UUID
     requires_payment: bool = False
+
+
+class GoogleOAuthCallbackResponse(BaseModel):
+    message: str
+    user_id: UUID
 
 
 class AuthSessionResponse(BaseModel):

@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse, RedirectResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +17,7 @@ from app.core.security import resolve_current_user_from_token
 from app.models.user import User
 from app.schemas.auth import (
     AuthSessionResponse,
+    GoogleOAuthCallbackResponse,
     LogoutResponse,
     RequestMagicLinkBody,
     RequestMagicLinkResponse,
@@ -23,6 +25,7 @@ from app.schemas.auth import (
 )
 from app.services.auth_service import (
     AuthService,
+    GoogleOAuthError,
     InvalidMagicLinkToken,
     RateLimitExceeded,
 )
@@ -84,6 +87,47 @@ def delete_auth_cookie(response: Response) -> None:
         httponly=True,
         samesite=_settings.auth_cookie_samesite,
     )
+
+
+def set_google_oauth_state_cookie(
+    response: Response,
+    settings: Settings,
+    state: str,
+    max_age: int,
+) -> None:
+    response.set_cookie(
+        key=settings.google_oauth_state_cookie_name,
+        value=state,
+        max_age=max_age,
+        path="/",
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+    )
+
+
+def delete_google_oauth_state_cookie(response: Response, settings: Settings) -> None:
+    response.delete_cookie(
+        key=settings.google_oauth_state_cookie_name,
+        path="/",
+        secure=settings.auth_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def google_oauth_error_response(exc: GoogleOAuthError, settings: Settings) -> JSONResponse:
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": {
+                "code": exc.code,
+                "message": exc.message,
+            }
+        },
+    )
+    delete_google_oauth_state_cookie(response, settings)
+    return response
 
 
 @router.post(
@@ -159,6 +203,65 @@ async def verify_magic_link(
         message="Authenticated.",
         user_id=auth_session.user_id,
         requires_payment=auth_session.requires_payment,
+    )
+
+
+@router.get("/google/start", response_model=None)
+async def start_google_oauth(
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> Response:
+    try:
+        result = await auth_service.create_google_authorization_url()
+    except GoogleOAuthError as exc:
+        return google_oauth_error_response(exc, auth_service.settings)
+
+    response = RedirectResponse(
+        url=result.authorization_url,
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    )
+    set_google_oauth_state_cookie(
+        response=response,
+        settings=auth_service.settings,
+        state=result.state,
+        max_age=result.expires_in,
+    )
+    return response
+
+
+@router.get(
+    "/google/callback",
+    response_model=GoogleOAuthCallbackResponse,
+)
+async def google_oauth_callback(
+    request: Request,
+    response: Response,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    code: Annotated[str | None, Query()] = None,
+    state: Annotated[str | None, Query()] = None,
+    error: Annotated[str | None, Query()] = None,
+) -> GoogleOAuthCallbackResponse | JSONResponse:
+    state_cookie = request.cookies.get(auth_service.settings.google_oauth_state_cookie_name)
+
+    try:
+        auth_session = await auth_service.verify_google_oauth_callback(
+            code=code,
+            state=state,
+            state_cookie=state_cookie,
+            oauth_error=error,
+        )
+    except GoogleOAuthError as exc:
+        return google_oauth_error_response(exc, auth_service.settings)
+
+    delete_google_oauth_state_cookie(response, auth_service.settings)
+    set_auth_cookie(
+        response=response,
+        access_token=auth_session.access_token,
+        max_age=auth_session.expires_in,
+    )
+    request.state.user_id = str(auth_session.user_id)
+    return GoogleOAuthCallbackResponse(
+        message="Authenticated.",
+        user_id=auth_session.user_id,
     )
 
 

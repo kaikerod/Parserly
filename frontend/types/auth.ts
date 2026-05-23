@@ -9,6 +9,11 @@ export interface AuthSessionResponse {
   user_id?: string | null;
 }
 
+export interface GoogleOAuthCallbackResponse {
+  message: string;
+  user_id: string;
+}
+
 export interface LogoutResponse {
   message: string;
 }

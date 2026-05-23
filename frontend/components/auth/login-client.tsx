@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   UserCheck
 } from "lucide-react";
-import { ApiError, requestMagicLink } from "@/lib/api";
+import { ApiError, googleOAuthStartPath, requestMagicLink } from "@/lib/api";
 
 type LoginPhase = "idle" | "submitting" | "sent" | "error";
 type LoginIntent = "login" | "registration";
@@ -54,6 +54,7 @@ export function LoginClient({
   const emailDescriptionId = error ? "email-help login-error" : "email-help";
   const isRegistrationFlow = intent === "registration";
   const markers = isRegistrationFlow ? REGISTRATION_MARKERS : LOGIN_MARKERS;
+  const googleButtonLabel = isRegistrationFlow ? "Cadastrar com Google" : "Continuar com Google";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -169,6 +170,38 @@ export function LoginClient({
               </div>
               <ShieldCheck className="h-6 w-6 text-teal" aria-hidden="true" />
             </div>
+
+            <a
+              href={googleOAuthStartPath()}
+              className="focus-ring mb-5 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-md border border-line/80 bg-paper px-5 py-3 text-sm font-bold text-ink shadow-tool transition hover:-translate-y-0.5 hover:border-acid/60 hover:bg-white"
+            >
+              <svg
+                className="h-5 w-5 shrink-0"
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M21.35 11.1H12v2.9h5.35c-.25 1.4-1.02 2.58-2.2 3.38v2.8h3.56c2.08-1.92 3.28-4.75 3.28-8.08 0-.76-.07-1.49-.22-2.2Z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 22c2.97 0 5.46-.98 7.28-2.66l-3.56-2.8c-.98.66-2.24 1.05-3.72 1.05-2.86 0-5.29-1.93-6.16-4.53H2.14v2.9A9.99 9.99 0 0 0 12 22Z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 13.06A5.99 5.99 0 0 1 5.5 11c0-.72.12-1.42.34-2.06v-2.9H2.14A9.99 9.99 0 0 0 2 11c0 1.61.39 3.12 1.08 4.44l2.76-2.38Z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.94c1.62 0 3.07.56 4.21 1.66l3.16-3.16C17.44 2.68 14.97 1.7 12 1.7A9.99 9.99 0 0 0 2.14 8.04l3.7 2.9C6.71 7.86 9.14 5.94 12 5.94Z"
+                  fill="#EA4335"
+                />
+              </svg>
+              {googleButtonLabel}
+              <ArrowRight className="h-5 w-5" aria-hidden="true" />
+            </a>
 
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <div>

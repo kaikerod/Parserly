@@ -24,9 +24,17 @@ logger = logging.getLogger(__name__)
 HEALTH_CHECK_TIMEOUT_SECONDS = 5.0
 MAX_ANALYSIS_MULTIPART_BYTES = 6 * 1024 * 1024
 MAX_WEBHOOK_BODY_BYTES = 64 * 1024
-EXPECTED_ALEMBIC_REVISION = "20260507_0002"
+EXPECTED_ALEMBIC_REVISION = "20260522_0003"
 REQUIRED_DATABASE_COLUMNS = {
     "users": {"id", "email", "analyses_used", "paid_analysis_credits"},
+    "user_identities": {
+        "id",
+        "user_id",
+        "provider",
+        "provider_subject",
+        "email",
+        "email_verified",
+    },
     "analyses": {"id", "user_id", "filename", "report_json", "model_used"},
     "payments": {"id", "user_id", "billing_id", "amount_cents", "status"},
 }

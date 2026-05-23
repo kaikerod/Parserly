@@ -18,7 +18,12 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   "missing-token": "O link de acesso não contém um token válido.",
   "invalid-link": "Este link expirou ou já foi usado. Solicite um novo acesso.",
   "account-not-found": "Solicite um novo link de acesso para continuar.",
-  "verify-unavailable": "Não foi possível verificar o link agora. Tente novamente em instantes."
+  "verify-unavailable": "Não foi possível verificar o link agora. Tente novamente em instantes.",
+  "google-oauth-invalid-state": "Nao foi possivel confirmar o login com Google. Tente novamente.",
+  "google-oauth-denied": "O acesso pelo Google nao foi concluido.",
+  "google-email-unverified": "O Google nao confirmou este e-mail. Use o magic link.",
+  "google-account-conflict": "Esta conta Google ja esta vinculada a outro acesso Parserly.",
+  "google-oauth-unavailable": "Nao foi possivel entrar com Google agora. Tente novamente em instantes."
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {

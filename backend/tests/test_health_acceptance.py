@@ -49,13 +49,19 @@ def test_health_endpoint_reports_degraded_dependency(monkeypatch) -> None:
 
 
 def test_health_schema_validation_accepts_current_revision_and_required_columns() -> None:
-    _validate_alembic_revision(["20260507_0002"])
+    _validate_alembic_revision(["20260522_0003"])
     _validate_required_database_columns(
         [
             ("users", "id"),
             ("users", "email"),
             ("users", "analyses_used"),
             ("users", "paid_analysis_credits"),
+            ("user_identities", "id"),
+            ("user_identities", "user_id"),
+            ("user_identities", "provider"),
+            ("user_identities", "provider_subject"),
+            ("user_identities", "email"),
+            ("user_identities", "email_verified"),
             ("analyses", "id"),
             ("analyses", "user_id"),
             ("analyses", "filename"),
@@ -74,7 +80,7 @@ def test_health_schema_validation_rejects_outdated_migration_revision() -> None:
     try:
         _validate_alembic_revision(["20260503_0001"])
     except DatabaseSchemaError as exc:
-        assert "Expected Alembic revision 20260507_0002" in str(exc)
+        assert "Expected Alembic revision 20260522_0003" in str(exc)
     else:
         raise AssertionError("Expected DatabaseSchemaError")
 
@@ -90,6 +96,7 @@ def test_health_schema_validation_rejects_missing_required_columns() -> None:
         )
     except DatabaseSchemaError as exc:
         assert "users.paid_analysis_credits" in str(exc)
+        assert "user_identities.provider_subject" in str(exc)
         assert "analyses.report_json" in str(exc)
         assert "payments.billing_id" in str(exc)
     else:
