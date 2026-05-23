@@ -172,16 +172,26 @@ test("authenticated dashboard loads and opens persistent analysis history", asyn
   assert.match(api, /apiPath\(`\/analysis\?\$\{params\.toString\(\)\}`\)/);
   assert.match(api, /apiPath\(`\/analysis\/\$\{encodeURIComponent\(id\)\}`\)/);
 
-  assert.match(dashboard, /const history = await listAnalyses\(10, 0, \{ signal \}\)/);
+  assert.match(dashboard, /const HISTORY_PAGE_SIZE = 4;/);
+  assert.match(
+    dashboard,
+    /const history = await listAnalyses\(HISTORY_PAGE_SIZE, page \* HISTORY_PAGE_SIZE, \{ signal \}\)/
+  );
   assert.match(dashboard, /if \(!isAuthenticated \|\| isLoadingAuth\) \{\s+return;\s+\}/);
   assert.match(dashboard, /const \[isLoadingData, setIsLoadingData\] = useState\(false\)/);
-  assert.match(dashboard, /void loadAnalysisHistory\(\)/);
+  assert.match(dashboard, /const \[historyPage, setHistoryPage\] = useState\(0\)/);
+  assert.match(dashboard, /void loadAnalysisHistory\(0\)/);
+  assert.match(dashboard, /setHistoryPage\(0\)/);
   assert.match(
     dashboard,
     /const savedAnalysis = await getAnalysisById\(item\.id, \{ signal: controller\.signal \}\)/
   );
   assert.match(dashboard, /<AnalysisHistoryPanel/);
   assert.match(dashboard, /items=\{analysisHistory\}/);
+  assert.match(dashboard, /currentPage=\{historyPage\}/);
+  assert.match(dashboard, /pageSize=\{HISTORY_PAGE_SIZE\}/);
+  assert.match(dashboard, /onPageChange=\{setHistoryPage\}/);
+  assert.match(dashboard, /Mostrando \{startItem\}-\{endItem\} de \{total\}/);
 });
 
 test("dashboard resolves auth session before exposing guest navigation", async () => {

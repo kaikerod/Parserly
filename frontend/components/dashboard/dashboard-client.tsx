@@ -6,6 +6,7 @@ import {
   AlertCircle,
   BookOpenText,
   CalendarClock,
+  ChevronLeft,
   ChevronRight,
   CreditCard,
   FileSearch,
@@ -43,6 +44,7 @@ const HISTORY_DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
   hour: "2-digit",
   minute: "2-digit"
 });
+const HISTORY_PAGE_SIZE = 4;
 
 const AUTHENTICATED_DASHBOARD_METRICS = [
   { label: "Quota grátis", value: "Incluída", detail: "até o limite inicial" },
@@ -132,6 +134,7 @@ export function DashboardClient({
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(0);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -178,6 +181,7 @@ export function DashboardClient({
 
     setAnalysisHistory([]);
     setHistoryTotal(0);
+    setHistoryPage(0);
     setHistoryError(null);
     setSelectedHistoryId(null);
     setIsHistoryDetailLoading(false);
@@ -191,7 +195,7 @@ export function DashboardClient({
     };
   }, []);
 
-  const loadAnalysisHistory = useCallback(async (signal?: AbortSignal) => {
+  const loadAnalysisHistory = useCallback(async (page: number, signal?: AbortSignal) => {
     if (!isAuthenticated || isLoadingAuth) {
       return;
     }
@@ -202,7 +206,7 @@ export function DashboardClient({
     setHistoryError(null);
 
     try {
-      const history = await listAnalyses(10, 0, { signal });
+      const history = await listAnalyses(HISTORY_PAGE_SIZE, page * HISTORY_PAGE_SIZE, { signal });
       if (signal?.aborted || historyRequestRef.current !== requestId) {
         return;
       }
@@ -254,13 +258,13 @@ export function DashboardClient({
     }
 
     const controller = new AbortController();
-    void loadAnalysisHistory(controller.signal);
+    void loadAnalysisHistory(historyPage, controller.signal);
 
     return () => {
       controller.abort();
       historyRequestRef.current += 1;
     };
-  }, [clearUserSpecificState, isAuthenticated, isLoadingAuth, loadAnalysisHistory]);
+  }, [clearUserSpecificState, historyPage, isAuthenticated, isLoadingAuth, loadAnalysisHistory]);
 
   const runAnalysis = useCallback(async (file: File, mode: SubmissionMode = "manual") => {
     setSelectedFile(file);
@@ -295,7 +299,11 @@ export function DashboardClient({
       setPaywallOpen(false);
       setPendingFile(null);
       if (isAuthenticated) {
-        void loadAnalysisHistory();
+        if (historyPage === 0) {
+          void loadAnalysisHistory(0);
+        } else {
+          setHistoryPage(0);
+        }
       }
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 402) {
@@ -315,7 +323,7 @@ export function DashboardClient({
     } finally {
       setIsSubmitting(false);
     }
-  }, [isAuthenticated, loadAnalysisHistory, router]);
+  }, [historyPage, isAuthenticated, loadAnalysisHistory, router]);
 
   const handleSelectHistoryItem = useCallback(async (item: AnalysisHistoryItem) => {
     if (!isAuthenticated || isLoadingAuth) {
@@ -630,12 +638,15 @@ export function DashboardClient({
               <AnalysisHistoryPanel
                 items={analysisHistory}
                 total={historyTotal}
+                currentPage={historyPage}
+                pageSize={HISTORY_PAGE_SIZE}
                 isAuthLoading={isLoadingAuth}
                 isLoading={isLoadingData}
                 isDetailLoading={isHistoryDetailLoading}
                 selectedId={selectedHistoryId}
                 error={historyError}
-                onRefresh={() => void loadAnalysisHistory()}
+                onRefresh={() => void loadAnalysisHistory(historyPage)}
+                onPageChange={setHistoryPage}
                 onSelect={(item) => void handleSelectHistoryItem(item)}
               />
             ) : null}
@@ -679,26 +690,40 @@ function PaymentActionButton({ label, onClick }: { label: string; onClick: () =>
 interface AnalysisHistoryPanelProps {
   items: AnalysisHistoryItem[];
   total: number;
+  currentPage: number;
+  pageSize: number;
   isAuthLoading: boolean;
   isLoading: boolean;
   isDetailLoading: boolean;
   selectedId: string | null;
   error: string | null;
   onRefresh: () => void;
+  onPageChange: (page: number) => void;
   onSelect: (item: AnalysisHistoryItem) => void;
 }
 
 function AnalysisHistoryPanel({
   items,
   total,
+  currentPage,
+  pageSize,
   isAuthLoading,
   isLoading,
   isDetailLoading,
   selectedId,
   error,
   onRefresh,
+  onPageChange,
   onSelect
 }: AnalysisHistoryPanelProps) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const hasMultiplePages = totalPages > 1;
+  const canGoPrevious = currentPage > 0 && !isAuthLoading && !isLoading;
+  const canGoNext = currentPage < totalPages - 1 && !isAuthLoading && !isLoading;
+  const hasItems = items.length > 0;
+  const startItem = hasItems ? currentPage * pageSize + 1 : 0;
+  const endItem = hasItems ? currentPage * pageSize + items.length : 0;
+
   return (
     <section
       aria-labelledby="history-title"
@@ -712,19 +737,46 @@ function AnalysisHistoryPanel({
           </h2>
           <p className="mt-1 text-xs text-paper/50">{total} registros encontrados</p>
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={isAuthLoading || isLoading}
-          className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/70 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
-          aria-label="Atualizar histórico"
-        >
-          {isAuthLoading || isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          ) : (
-            <RotateCw className="h-4 w-4" aria-hidden="true" />
-          )}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {hasMultiplePages ? (
+            <div className="hidden items-center rounded-md border border-line/70 bg-night/70 text-xs text-paper/55 sm:flex">
+              <button
+                type="button"
+                onClick={() => onPageChange(currentPage - 1)}
+                disabled={!canGoPrevious}
+                className="focus-ring inline-flex h-10 items-center justify-center border-r border-line/70 px-3 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="P�gina anterior"
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <span className="px-3">
+                P�gina {currentPage + 1} de {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => onPageChange(currentPage + 1)}
+                disabled={!canGoNext}
+                className="focus-ring inline-flex h-10 items-center justify-center border-l border-line/70 px-3 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Pr�xima p�gina"
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={isAuthLoading || isLoading}
+            className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/70 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Atualizar histórico"
+          >
+            {isAuthLoading || isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <RotateCw className="h-4 w-4" aria-hidden="true" />
+            )}
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -794,6 +846,36 @@ function AnalysisHistoryPanel({
           );
         })}
       </div>
+
+      {hasMultiplePages ? (
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/60 pt-4 text-xs text-paper/55">
+          <p>
+            Mostrando {startItem}-{endItem} de {total}
+          </p>
+          <div className="flex items-center gap-2 sm:hidden">
+            <button
+              type="button"
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={!canGoPrevious}
+              className="focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line/70 bg-night px-3 font-semibold text-paper/75 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="P�gina anterior"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              Anterior
+            </button>
+            <button
+              type="button"
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={!canGoNext}
+              className="focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line/70 bg-night px-3 font-semibold text-paper/75 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Pr�xima p�gina"
+            >
+              Pr�xima
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -876,3 +958,4 @@ function isAbortError(error: unknown) {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
