@@ -33,6 +33,7 @@ from app.core.quotas import (
     guest_analysis_key,
     normalize_analysis_count,
     normalize_guest_id,
+    user_has_unlimited_analyses,
     user_requires_payment,
 )
 from app.core.rate_limit import (
@@ -137,16 +138,19 @@ async def get_analysis_quota(
             remaining_analyses=remaining_analyses,
             payment_required=False,
             registration_required=registration_required,
+            unlimited_analyses=False,
             message=REGISTRATION_REQUIRED_MESSAGE if registration_required else None,
         )
 
     remaining_analyses = get_user_remaining_analyses(current_user)
     payment_required = user_requires_payment(current_user)
+    unlimited_analyses = user_has_unlimited_analyses(current_user)
     return AnalysisQuotaResponse(
         authenticated=True,
         remaining_analyses=remaining_analyses,
         payment_required=payment_required,
         registration_required=False,
+        unlimited_analyses=unlimited_analyses,
         message=PAYMENT_REQUIRED_MESSAGE if payment_required else None,
     )
 
@@ -218,13 +222,15 @@ async def create_analysis(
                 guest_quota_keys,
             )
         else:
-            await enforce_analysis_rate_limits(
-                request=request,
-                redis_client=redis_client,
-                scope="user",
-                identifier=str(current_user.id),
-                max_requests=AUTH_ANALYSIS_RATE_LIMIT_MAX_REQUESTS,
-            )
+            unlimited_analyses = user_has_unlimited_analyses(current_user)
+            if not unlimited_analyses:
+                await enforce_analysis_rate_limits(
+                    request=request,
+                    redis_client=redis_client,
+                    scope="user",
+                    identifier=str(current_user.id),
+                    max_requests=AUTH_ANALYSIS_RATE_LIMIT_MAX_REQUESTS,
+                )
             concurrency_key = await acquire_concurrency_slot(
                 redis_client,
                 scope="analysis:create",

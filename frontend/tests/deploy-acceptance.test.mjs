@@ -379,6 +379,7 @@ test("paywall creates PIX charge, listens for confirmation, and handles expirati
   assert.match(paywall, /new EventSource\(apiPath\("\/payments\/status-stream"\)/);
   assert.match(paywall, /payment_confirmed/);
   assert.match(paywall, /payment_expired/);
+  assert.match(paywall, /quota\.unlimited_analyses \|\| quota\.remaining_analyses > 0/);
   assert.match(paywall, /markChargeExpired\(\)/);
   assert.match(paywall, /onPaymentConfirmed\(\)/);
 });

@@ -16,8 +16,7 @@ class SessionAccessProfile:
 
 
 def get_session_access_profile(email: str) -> SessionAccessProfile:
-    normalized_email = email.strip().lower()
-    if normalized_email == MASTER_ADMIN_EMAIL:
+    if is_master_admin_email(email):
         return SessionAccessProfile(
             access_level=MASTER_ADMIN_ACCESS_LEVEL,
             permissions=(ALL_FEATURES_PERMISSION,),
@@ -27,3 +26,7 @@ def get_session_access_profile(email: str) -> SessionAccessProfile:
         access_level=STANDARD_USER_ACCESS_LEVEL,
         permissions=(BASIC_FEATURES_PERMISSION,),
     )
+
+
+def is_master_admin_email(email: str) -> bool:
+    return email.strip().lower() == MASTER_ADMIN_EMAIL

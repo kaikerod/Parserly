@@ -25,6 +25,7 @@ from app.services.analysis_service import (
     InvalidResumeFile,
     MAX_UPLOAD_BYTES,
     OPENROUTER_API_URL,
+    QuotaExceeded,
     UserAnalysisReservation,
 )
 
@@ -447,6 +448,56 @@ def test_reserve_user_analysis_consumes_paid_credit_after_free_quota(
     assert db_session.committed is False
     assert db_session.rolled_back is False
     assert db_session.statements == []
+
+
+def test_master_admin_user_analysis_does_not_consume_quota_or_paid_credits(
+    runtime_dir: Path,
+) -> None:
+    db_session = ReserveDbSession((FREE_ANALYSIS_LIMIT, 0))
+    service = AnalysisService(
+        db_session=db_session,  # type: ignore[arg-type]
+        settings=Settings(environment="test", upload_tmp_dir=str(runtime_dir)),
+    )
+    user = SimpleNamespace(
+        id=uuid4(),
+        email="kaikevinicius789@gmail.com",
+        analyses_used=FREE_ANALYSIS_LIMIT,
+        paid_analysis_credits=0,
+    )
+
+    reservation = asyncio.run(service._reserve_user_analysis(user))  # type: ignore[arg-type]
+    analyses_used = asyncio.run(
+        service._commit_user_analysis_usage(user, reservation)  # type: ignore[arg-type]
+    )
+
+    assert reservation == UserAnalysisReservation(
+        analyses_used=FREE_ANALYSIS_LIMIT,
+        consumed_paid_credit=False,
+        unlimited=True,
+    )
+    assert analyses_used == FREE_ANALYSIS_LIMIT
+    assert user.analyses_used == FREE_ANALYSIS_LIMIT
+    assert user.paid_analysis_credits == 0
+    assert db_session.statements == []
+
+
+def test_standard_user_without_remaining_analyses_still_hits_quota_limit(
+    runtime_dir: Path,
+) -> None:
+    db_session = ReserveDbSession((FREE_ANALYSIS_LIMIT, 0))
+    service = AnalysisService(
+        db_session=db_session,  # type: ignore[arg-type]
+        settings=Settings(environment="test", upload_tmp_dir=str(runtime_dir)),
+    )
+    user = SimpleNamespace(
+        id=uuid4(),
+        email="person@example.com",
+        analyses_used=FREE_ANALYSIS_LIMIT,
+        paid_analysis_credits=0,
+    )
+
+    with pytest.raises(QuotaExceeded):
+        asyncio.run(service._reserve_user_analysis(user))  # type: ignore[arg-type]
 
 
 def test_persist_analysis_uses_reserved_paid_credit(runtime_dir: Path) -> None:

@@ -23,6 +23,7 @@ from app.core.quotas import (
     FREE_ANALYSIS_LIMIT,
     get_user_remaining_analyses,
     normalize_analysis_count,
+    user_has_unlimited_analyses,
 )
 from app.models.analysis import Analysis
 from app.models.user import User
@@ -276,6 +277,7 @@ class PersistedAnalysisResult:
 class UserAnalysisReservation:
     analyses_used: int
     consumed_paid_credit: bool
+    unlimited: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -937,10 +939,17 @@ class AnalysisService:
 
     async def _reserve_user_analysis(self, user: User) -> UserAnalysisReservation:
         await self.db_session.refresh(user)
+        analyses_used = normalize_analysis_count(user.analyses_used)
+        if user_has_unlimited_analyses(user):
+            return UserAnalysisReservation(
+                analyses_used=analyses_used,
+                consumed_paid_credit=False,
+                unlimited=True,
+            )
+
         if get_user_remaining_analyses(user) == 0:
             raise QuotaExceeded
 
-        analyses_used = normalize_analysis_count(user.analyses_used)
         consumed_paid_credit = analyses_used >= FREE_ANALYSIS_LIMIT
         reserved_analyses_used = analyses_used if consumed_paid_credit else analyses_used + 1
 
@@ -954,6 +963,11 @@ class AnalysisService:
         user: User,
         reservation: UserAnalysisReservation,
     ) -> int:
+        if reservation.unlimited:
+            analyses_used = normalize_analysis_count(user.analyses_used)
+            user.analyses_used = analyses_used
+            return analyses_used
+
         usage_update = (
             update(User)
             .where(User.id == user.id)

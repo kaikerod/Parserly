@@ -71,4 +71,5 @@ class AnalysisQuotaResponse(BaseModel):
     remaining_analyses: int
     payment_required: bool
     registration_required: bool
+    unlimited_analyses: bool = False
     message: str | None = None

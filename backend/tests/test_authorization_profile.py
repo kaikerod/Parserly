@@ -8,6 +8,7 @@ from app.core.authorization import (
     MASTER_ADMIN_ACCESS_LEVEL,
     STANDARD_USER_ACCESS_LEVEL,
     get_session_access_profile,
+    is_master_admin_email,
 )
 
 
@@ -16,6 +17,7 @@ def test_master_email_gets_master_access_profile() -> None:
 
     assert profile.access_level == MASTER_ADMIN_ACCESS_LEVEL
     assert profile.permissions == (ALL_FEATURES_PERMISSION,)
+    assert is_master_admin_email("kaikevinicius789@gmail.com")
 
 
 def test_master_email_matching_uses_system_normalization() -> None:
@@ -23,6 +25,7 @@ def test_master_email_matching_uses_system_normalization() -> None:
 
     assert profile.access_level == MASTER_ADMIN_ACCESS_LEVEL
     assert profile.permissions == (ALL_FEATURES_PERMISSION,)
+    assert is_master_admin_email("  KaikeVinicius789@Gmail.com  ")
 
 
 @pytest.mark.parametrize(
@@ -39,3 +42,4 @@ def test_non_master_and_near_miss_emails_get_standard_access_profile(email: str)
 
     assert profile.access_level == STANDARD_USER_ACCESS_LEVEL
     assert profile.permissions == (BASIC_FEATURES_PERMISSION,)
+    assert not is_master_admin_email(email)

@@ -6,7 +6,10 @@ from uuid import UUID
 
 from redis.asyncio import Redis
 
+from app.core.authorization import is_master_admin_email
+
 FREE_ANALYSIS_LIMIT = 2
+UNLIMITED_ANALYSIS_REMAINING = 2_147_483_647
 GUEST_ANALYSIS_COOKIE_NAME = "parserly_guest_id"
 GUEST_ANALYSIS_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 180
 GUEST_ANALYSIS_KEY_TTL_SECONDS = GUEST_ANALYSIS_COOKIE_MAX_AGE_SECONDS
@@ -45,12 +48,20 @@ def get_paid_analysis_credits(user: object) -> int:
 
 
 def get_user_remaining_analyses(user: object) -> int:
+    if user_has_unlimited_analyses(user):
+        return UNLIMITED_ANALYSIS_REMAINING
+
     analyses_used = getattr(user, "analyses_used", 0)
     return get_free_analyses_remaining(analyses_used) + get_paid_analysis_credits(user)
 
 
 def user_requires_payment(user: object) -> bool:
     return get_user_remaining_analyses(user) == 0
+
+
+def user_has_unlimited_analyses(user: object) -> bool:
+    email = getattr(user, "email", None)
+    return isinstance(email, str) and is_master_admin_email(email)
 
 
 def guest_analysis_key(guest_id: str) -> str:

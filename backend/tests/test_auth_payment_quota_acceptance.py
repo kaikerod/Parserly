@@ -311,6 +311,30 @@ def test_existing_user_magic_link_requires_payment_when_user_quota_is_exhausted(
     assert result.requires_payment is True
 
 
+def test_master_magic_link_ignores_exhausted_user_quota() -> None:
+    user = SimpleNamespace(
+        id=uuid4(),
+        email="kaikevinicius789@gmail.com",
+        analyses_used=FREE_ANALYSIS_LIMIT,
+        paid_analysis_credits=0,
+    )
+    redis = MagicLinkRedis()
+    service = FakeAuthService(
+        redis,
+        existing_user=user,
+        guest_quota_exhausted=False,
+    )
+
+    result = asyncio.run(service.request_magic_link("kaikevinicius789@gmail.com"))
+    token = UUID(result.magic_link.rsplit("token=", 1)[1])
+    session = asyncio.run(service.verify_magic_link(token))
+
+    assert result.requires_payment is False
+    assert session.requires_payment is False
+    assert user.analyses_used == FREE_ANALYSIS_LIMIT
+    assert user.paid_analysis_credits == 0
+
+
 def test_existing_user_magic_link_accepts_paid_credits_after_free_quota() -> None:
     user = SimpleNamespace(
         id=uuid4(),

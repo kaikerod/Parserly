@@ -202,7 +202,7 @@ export function PaywallModal({
           !cancelled &&
           quota.authenticated &&
           !quota.payment_required &&
-          quota.remaining_analyses > 0
+          (quota.unlimited_analyses || quota.remaining_analyses > 0)
         ) {
           completePaymentConfirmation();
         }

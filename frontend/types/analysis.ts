@@ -55,5 +55,6 @@ export interface AnalysisQuotaResponse {
   remaining_analyses: number;
   payment_required: boolean;
   registration_required: boolean;
+  unlimited_analyses: boolean;
   message?: string | null;
 }
