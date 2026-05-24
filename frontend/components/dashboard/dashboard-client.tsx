@@ -53,9 +53,9 @@ const AUTHENTICATED_DASHBOARD_METRICS = [
 ];
 
 const GUEST_DASHBOARD_METRICS = [
-  { label: "Sem cadastro", value: "Teste grátis", detail: "até o limite inicial" },
+  { label: "Teste grátis", value: "Sem login", detail: "até o limite inicial" },
   { label: "Arquivos", value: "PDF/DOCX", detail: "até 5 MB" },
-  { label: "Após limite", value: "Cadastro", detail: "magic link por e-mail" }
+  { label: "Após limite", value: "Google", detail: "ou magic link" }
 ];
 
 const AUTH_RESOLVING_DASHBOARD_METRICS = [

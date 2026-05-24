@@ -26,14 +26,14 @@ interface LoginClientProps {
 }
 
 const LOGIN_MARKERS = [
-  { label: "Acesso", value: "e-mail" },
-  { label: "Link", value: "15 min" },
+  { label: "Acesso", value: "Google" },
+  { label: "Alternativa", value: "magic link" },
   { label: "Sessão", value: "7 dias" }
 ];
 
 const REGISTRATION_MARKERS = [
-  { label: "Cadastro", value: "sem senha" },
-  { label: "Link", value: "15 min" },
+  { label: "Cadastro", value: "Google" },
+  { label: "Alternativa", value: "magic link" },
   { label: "Checkout", value: "PIX" }
 ];
 
@@ -109,7 +109,9 @@ export function LoginClient({
               <span className="font-display text-base font-semibold text-paper">Parserly</span>
               <span className="hidden text-paper/30 sm:inline">/</span>
               <span className="hidden truncate sm:inline">
-                {isRegistrationFlow ? "Cadastro por magic link" : "Login por magic link"}
+                {isRegistrationFlow
+                  ? "Cadastro com Google ou magic link"
+                  : "Login com Google ou magic link"}
               </span>
             </div>
           </div>
@@ -125,7 +127,7 @@ export function LoginClient({
               ) : (
                 <UserCheck className="h-4 w-4 text-acid" aria-hidden="true" />
               )}
-              {isRegistrationFlow ? "Cadastro por e-mail" : "Acesso por e-mail"}
+              {isRegistrationFlow ? "Cadastro com Google" : "Acesso com Google"}
             </div>
 
             <h1 className="mt-5 max-w-4xl font-display text-5xl font-semibold leading-none text-paper md:text-6xl">
@@ -136,8 +138,8 @@ export function LoginClient({
 
             <p className="mt-5 max-w-2xl text-sm leading-6 text-paper/65">
               {isRegistrationFlow
-                ? "Use seu e-mail para identificar sua conta, preservar sua quota e continuar sem senha."
-                : "Use seu e-mail para entrar ou criar acesso, manter sua quota e continuar suas análises sem senha."}
+                ? "Use Google para cadastrar sua conta rapidamente ou receba um magic link para preservar sua quota e continuar sem senha."
+                : "Entre com Google ou receba um magic link para manter sua quota e continuar suas análises sem senha."}
             </p>
 
             <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">

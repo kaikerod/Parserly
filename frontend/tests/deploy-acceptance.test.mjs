@@ -158,6 +158,9 @@ test("dashboard gates upload by quota and opens login or paywall paths", async (
   assert.ok(analysisIndex > quotaIndex, "analysis starts only after quota check");
   assert.match(dashboard, /quota\.registration_required/);
   assert.match(dashboard, /router\.replace\("\/login\?reason=free-limit"\)/);
+  assert.match(dashboard, /label: "Teste grátis", value: "Sem login"/);
+  assert.match(dashboard, /label: "Após limite", value: "Google", detail: "ou magic link"/);
+  assert.doesNotMatch(dashboard, /magic link por e-mail/);
   assert.match(dashboard, /quota\.payment_required/);
   assert.match(dashboard, /setPaywallOpen\(true\)/);
   assert.match(dashboard, /onPaymentConfirmed=\{handlePaymentConfirmed\}/);
@@ -245,17 +248,19 @@ test("dashboard logout clears user-specific history and selected report state", 
   assert.match(dashboard, /setAnalysis\(null\)/);
 });
 
-test("login page is framed as unified passwordless access", async () => {
+test("login page is framed as Google-first passwordless access", async () => {
   const loginClient = await readSource("components/auth/login-client.tsx");
   const loginPage = await readSource("app/login/page.tsx");
 
-  assert.match(loginClient, /Login por magic link/);
-  assert.match(loginClient, /Acesso por e-mail/);
+  assert.match(loginClient, /Login com Google ou magic link/);
+  assert.match(loginClient, /Acesso com Google/);
+  assert.match(loginClient, /label: "Acesso", value: "Google"/);
+  assert.match(loginClient, /label: "Alternativa", value: "magic link"/);
   assert.match(loginClient, /Se for seu primeiro acesso, o Parserly cria sua conta ao verificar o link/);
-  assert.match(loginClient, /Cadastro por magic link/);
+  assert.match(loginClient, /Cadastro com Google ou magic link/);
   assert.doesNotMatch(loginClient, /error\.status === 404/);
   assert.doesNotMatch(loginClient, /contas já cadastradas/);
-  assert.match(loginPage, /Entre ou crie acesso no Parserly por magic link/);
+  assert.match(loginPage, /Entre ou crie acesso no Parserly com Google ou magic link/);
   assert.match(loginPage, /const isRegistrationIntent = intentCode === "registration" \|\| reasonCode === "free-limit"/);
   assert.match(loginPage, /intent=\{isRegistrationIntent \? "registration" : "login"\}/);
 });

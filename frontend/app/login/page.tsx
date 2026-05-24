@@ -3,7 +3,7 @@ import { LoginClient } from "@/components/auth/login-client";
 
 export const metadata: Metadata = {
   title: "Login | Parserly",
-  description: "Entre ou crie acesso no Parserly por magic link usando seu e-mail."
+  description: "Entre ou crie acesso no Parserly com Google ou magic link."
 };
 
 interface LoginPageProps {
@@ -40,7 +40,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const isRegistrationIntent = intentCode === "registration" || reasonCode === "free-limit";
   const initialNotice =
     isRegistrationIntent
-      ? "Você atingiu o limite gratuito. Cadastre seu e-mail para continuar pelo checkout PIX."
+      ? "Você atingiu o limite gratuito. Entre com Google ou use seu e-mail para continuar pelo checkout PIX."
       : undefined;
 
   return (
