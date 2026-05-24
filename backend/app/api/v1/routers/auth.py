@@ -9,6 +9,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.authorization import SessionAccessProfile, get_session_access_profile
 from app.core.database import get_db_session
 from app.core.quotas import GUEST_ANALYSIS_COOKIE_NAME, normalize_guest_id
 from app.core.rate_limit import client_ip_from_request
@@ -130,6 +131,13 @@ def google_oauth_error_response(exc: GoogleOAuthError, settings: Settings) -> JS
     return response
 
 
+def access_profile_response(profile: SessionAccessProfile) -> dict[str, object]:
+    return {
+        "access_level": profile.access_level,
+        "permissions": list(profile.permissions),
+    }
+
+
 @router.post(
     "/request-link",
     response_model=RequestMagicLinkResponse,
@@ -203,6 +211,7 @@ async def verify_magic_link(
         message="Authenticated.",
         user_id=auth_session.user_id,
         requires_payment=auth_session.requires_payment,
+        **access_profile_response(auth_session.access_profile),
     )
 
 
@@ -262,6 +271,7 @@ async def google_oauth_callback(
     return GoogleOAuthCallbackResponse(
         message="Authenticated.",
         user_id=auth_session.user_id,
+        **access_profile_response(auth_session.access_profile),
     )
 
 
@@ -269,9 +279,17 @@ async def google_oauth_callback(
 async def get_auth_session(
     current_user: Annotated[User | None, Depends(get_auth_session_user)],
 ) -> AuthSessionResponse:
+    if current_user is None:
+        return AuthSessionResponse(
+            authenticated=False,
+            user_id=None,
+        )
+
+    access_profile = get_session_access_profile(current_user.email)
     return AuthSessionResponse(
-        authenticated=current_user is not None,
-        user_id=current_user.id if current_user is not None else None,
+        authenticated=True,
+        user_id=current_user.id,
+        **access_profile_response(access_profile),
     )
 
 

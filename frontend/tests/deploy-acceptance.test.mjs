@@ -258,6 +258,11 @@ test("dashboard resolves auth session before exposing guest navigation", async (
   assert.match(hook, /isAuthenticated: boolean/);
   assert.match(hook, /isLoadingAuth: boolean/);
   assert.match(hook, /authError: string \| null/);
+  assert.match(hook, /accessLevel: AuthAccessLevel \| null/);
+  assert.match(hook, /permissions: AuthPermission\[\]/);
+  assert.match(hook, /hasFullAccess: boolean/);
+  assert.match(hook, /setAccessLevel\(session\.access_level \?\? null\)/);
+  assert.match(hook, /setPermissions\(session\.permissions \?\? \[\]\)/);
   assert.match(hook, /refreshSession: \(\) => Promise<void>/);
   assert.match(hook, /logout: \(\) => Promise<void>/);
   assert.match(hook, /void resolveSession\(controller\.signal\)/);
@@ -265,6 +270,8 @@ test("dashboard resolves auth session before exposing guest navigation", async (
   assert.match(dashboard, /isLoadingAuth \? \(/);
   assert.match(dashboard, /Confirmando sessao/);
   assert.match(dashboard, /\) : isAuthenticated \? \(/);
+  assert.match(dashboard, /permissions\.includes\(ALL_FEATURES_PERMISSION\)/);
+  assert.match(dashboard, /\{accessLevel\}/);
   assert.match(dashboard, /href="\/login"/);
 });
 

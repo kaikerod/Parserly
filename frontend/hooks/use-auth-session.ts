@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, getAuthSession, logout as requestLogout } from "@/lib/api";
+import { ALL_FEATURES_PERMISSION } from "@/types/auth";
+import type { AuthAccessLevel, AuthPermission } from "@/types/auth";
 
 export interface AuthSessionState {
   isAuthenticated: boolean;
   isLoadingAuth: boolean;
   authError: string | null;
+  accessLevel: AuthAccessLevel | null;
+  permissions: AuthPermission[];
+  hasFullAccess: boolean;
   refreshSession: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -15,6 +20,13 @@ export function useAuthSession(initialIsAuthenticated: boolean): AuthSessionStat
   const [isAuthenticated, setIsAuthenticated] = useState(initialIsAuthenticated);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [accessLevel, setAccessLevel] = useState<AuthAccessLevel | null>(null);
+  const [permissions, setPermissions] = useState<AuthPermission[]>([]);
+
+  const clearAccessProfile = useCallback(() => {
+    setAccessLevel(null);
+    setPermissions([]);
+  }, []);
 
   const resolveSession = useCallback(async (signal?: AbortSignal) => {
     setIsLoadingAuth(true);
@@ -27,6 +39,12 @@ export function useAuthSession(initialIsAuthenticated: boolean): AuthSessionStat
       }
 
       setIsAuthenticated(session.authenticated);
+      if (session.authenticated) {
+        setAccessLevel(session.access_level ?? null);
+        setPermissions(session.permissions ?? []);
+      } else {
+        clearAccessProfile();
+      }
     } catch (error) {
       if (isAbortError(error) || signal?.aborted) {
         return;
@@ -34,6 +52,7 @@ export function useAuthSession(initialIsAuthenticated: boolean): AuthSessionStat
 
       if (error instanceof ApiError && error.status === 401) {
         setIsAuthenticated(false);
+        clearAccessProfile();
         setAuthError(null);
         return;
       }
@@ -46,7 +65,7 @@ export function useAuthSession(initialIsAuthenticated: boolean): AuthSessionStat
         setIsLoadingAuth(false);
       }
     }
-  }, []);
+  }, [clearAccessProfile]);
 
   useEffect(() => {
     setIsAuthenticated(initialIsAuthenticated);
@@ -67,6 +86,7 @@ export function useAuthSession(initialIsAuthenticated: boolean): AuthSessionStat
     setIsLoadingAuth(true);
     setAuthError(null);
     setIsAuthenticated(false);
+    clearAccessProfile();
 
     try {
       await requestLogout();
@@ -77,12 +97,15 @@ export function useAuthSession(initialIsAuthenticated: boolean): AuthSessionStat
     } finally {
       setIsLoadingAuth(false);
     }
-  }, []);
+  }, [clearAccessProfile]);
 
   return {
     isAuthenticated,
     isLoadingAuth,
     authError,
+    accessLevel,
+    permissions,
+    hasFullAccess: permissions.includes(ALL_FEATURES_PERMISSION),
     refreshSession,
     logout
   };

@@ -16,6 +16,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authorization import SessionAccessProfile, get_session_access_profile
 from app.core.config import Settings
 from app.core.quotas import (
     FREE_ANALYSIS_LIMIT,
@@ -95,6 +96,7 @@ class AuthSession:
     access_token: str
     expires_in: int
     requires_payment: bool
+    access_profile: SessionAccessProfile
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +235,7 @@ class AuthService:
             access_token=access_token,
             expires_in=JWT_TTL_SECONDS,
             requires_payment=requires_payment,
+            access_profile=get_session_access_profile(user.email),
         )
 
     async def create_google_authorization_url(self) -> GoogleOAuthStartResult:
@@ -308,6 +311,7 @@ class AuthService:
             access_token=self.create_access_token(user.id),
             expires_in=JWT_TTL_SECONDS,
             requires_payment=user_requires_payment(user),
+            access_profile=get_session_access_profile(user.email),
         )
 
     async def exchange_google_authorization_code(self, code: str) -> GoogleOAuthTokenResult:

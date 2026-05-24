@@ -30,6 +30,7 @@ import {
 } from "@/lib/api";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import type { AnalysisHistoryItem, AnalysisResponse } from "@/types/analysis";
+import { ALL_FEATURES_PERMISSION } from "@/types/auth";
 import { AnalysisReport } from "./analysis-report";
 import { Dropzone } from "./dropzone";
 import { PaywallModal } from "./paywall-modal";
@@ -125,6 +126,8 @@ export function DashboardClient({
     isAuthenticated,
     isLoadingAuth,
     authError,
+    accessLevel,
+    permissions,
     refreshSession,
     logout: endSession
   } = useAuthSession(initialIsAuthenticated);
@@ -158,6 +161,7 @@ export function DashboardClient({
   const ActiveNavigationIcon = activeNavigationDetail.icon;
   const paymentActionLabel = hasPendingPixCharge ? "Reabrir QR Code PIX" : "Abrir pagamento PIX";
   const activeAnalysisLoadingStep = ANALYSIS_LOADING_STEPS[activeAnalysisLoadingStepIndex];
+  const hasFullFeatureAccess = permissions.includes(ALL_FEATURES_PERMISSION);
 
   useEffect(() => {
     const rotationInterval = window.setInterval(() => {
@@ -500,14 +504,27 @@ export function DashboardClient({
               Confirmando sessao
             </button>
           ) : isAuthenticated ? (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-              Sair
-            </button>
+            <div className="flex items-center gap-2">
+              {accessLevel ? (
+                <span
+                  className={`hidden max-w-48 truncate rounded-md border px-3 py-2 text-xs font-semibold sm:inline-flex ${
+                    hasFullFeatureAccess
+                      ? "border-acid/45 bg-acid/10 text-acid"
+                      : "border-line/70 bg-night text-paper/60"
+                  }`}
+                >
+                  {accessLevel}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+                Sair
+              </button>
+            </div>
           ) : (
             <div className="flex items-center gap-2">
               <a

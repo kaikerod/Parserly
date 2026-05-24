@@ -56,16 +56,22 @@ class VerifyMagicLinkResponse(BaseModel):
     message: str
     user_id: UUID
     requires_payment: bool = False
+    access_level: str
+    permissions: list[str]
 
 
 class GoogleOAuthCallbackResponse(BaseModel):
     message: str
     user_id: UUID
+    access_level: str
+    permissions: list[str]
 
 
 class AuthSessionResponse(BaseModel):
     authenticated: bool
     user_id: UUID | None = None
+    access_level: str | None = None
+    permissions: list[str] = Field(default_factory=list)
 
 
 class LogoutResponse(BaseModel):
