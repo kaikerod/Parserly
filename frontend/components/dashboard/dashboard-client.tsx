@@ -505,13 +505,9 @@ export function DashboardClient({
             </button>
           ) : isAuthenticated ? (
             <div className="flex items-center gap-2">
-              {accessLevel ? (
+              {hasFullFeatureAccess && accessLevel ? (
                 <span
-                  className={`hidden max-w-48 truncate rounded-md border px-3 py-2 text-xs font-semibold sm:inline-flex ${
-                    hasFullFeatureAccess
-                      ? "border-acid/45 bg-acid/10 text-acid"
-                      : "border-line/70 bg-night text-paper/60"
-                  }`}
+                  className="hidden max-w-48 truncate rounded-md border border-acid/45 bg-acid/10 px-3 py-2 text-xs font-semibold text-acid sm:inline-flex"
                 >
                   {accessLevel}
                 </span>
