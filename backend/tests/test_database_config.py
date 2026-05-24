@@ -32,6 +32,50 @@ def test_settings_keeps_custom_api_public_url_for_vercel_production() -> None:
     assert settings.api_public_url == "https://api.parserly.com.br"
 
 
+def test_settings_uses_canonical_app_url_for_vercel_production() -> None:
+    settings = Settings(
+        vercel=True,
+        vercel_env="production",
+        app_url="https://parserly-web.vercel.app",
+    )
+
+    assert settings.app_url == "https://www.parserly.com.br"
+
+
+def test_settings_replaces_vercel_app_deployment_url_in_production() -> None:
+    settings = Settings(
+        vercel=True,
+        vercel_env="production",
+        app_url="https://parserly-web-git-main-kaikerods-projects.vercel.app",
+    )
+
+    assert settings.app_url == "https://www.parserly.com.br"
+
+
+def test_settings_uses_canonical_google_redirect_for_vercel_production() -> None:
+    settings = Settings(
+        vercel=True,
+        vercel_env="production",
+        google_oauth_redirect_uri="https://parserly.vercel.app/auth/google/callback",
+    )
+
+    assert settings.google_oauth_redirect_uri == (
+        "https://www.parserly.com.br/auth/google/callback"
+    )
+
+
+def test_settings_keeps_custom_app_url_for_vercel_production() -> None:
+    settings = Settings(
+        vercel=True,
+        vercel_env="production",
+        app_url="https://app.example.com",
+        google_oauth_redirect_uri="https://app.example.com/auth/google/callback",
+    )
+
+    assert settings.app_url == "https://app.example.com"
+    assert settings.google_oauth_redirect_uri == "https://app.example.com/auth/google/callback"
+
+
 def test_settings_normalizes_postgres_scheme_without_rewriting_sslmode() -> None:
     settings = Settings(
         database_url="postgres://user:pass@example.com/db?sslmode=require",

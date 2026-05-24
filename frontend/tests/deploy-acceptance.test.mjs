@@ -266,11 +266,27 @@ test("login page shows Google OAuth access next to magic link", async () => {
   const api = await readSource("lib/api.ts");
 
   assert.match(api, /export function googleOAuthStartPath/);
+  assert.match(api, /CANONICAL_APP_ORIGIN = "https:\/\/www\.parserly\.com\.br"/);
+  assert.match(api, /publicAppPath\(apiPath\("\/auth\/google\/start"\)\)/);
   assert.match(api, /apiPath\("\/auth\/google\/start"\)/);
   assert.match(loginClient, /href=\{googleOAuthStartPath\(\)\}/);
   assert.match(loginClient, /Continuar com Google/);
   assert.match(loginClient, /Cadastrar com Google/);
   assert.doesNotMatch(loginPage, /NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED/);
+});
+
+test("production auth entry points redirect to the canonical app domain before cookies", async () => {
+  const proxy = await readSource("proxy.ts");
+  const verifyRoute = await readSource("app/auth/verify/route.ts");
+  const googleCallbackRoute = await readSource("app/auth/google/callback/route.ts");
+
+  assert.match(proxy, /CANONICAL_APP_ORIGIN = "https:\/\/www\.parserly\.com\.br"/);
+  assert.match(proxy, /"\/auth\/verify"/);
+  assert.match(proxy, /"\/auth\/google\/callback"/);
+  assert.match(proxy, /"\/api\/v1\/auth\/google\/start"/);
+  assert.match(proxy, /NextResponse\.redirect\(canonicalUrl, 307\)/);
+  assert.match(verifyRoute, /CANONICAL_APP_BASE_URL = "https:\/\/www\.parserly\.com\.br"/);
+  assert.match(googleCallbackRoute, /CANONICAL_APP_BASE_URL = "https:\/\/www\.parserly\.com\.br"/);
 });
 
 test("Google OAuth callback forwards cookies and maps safe errors", async () => {

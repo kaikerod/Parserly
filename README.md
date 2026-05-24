@@ -66,7 +66,9 @@ As variáveis essenciais estão no arquivo `.env.example`. Não esqueça de conf
 
 Para Google OAuth local, registre no Google Cloud Console o redirect URI
 `http://localhost:3000/auth/google/callback`. Em producao, registre a URL publica
-equivalente do frontend, por exemplo `https://parserly.vercel.app/auth/google/callback`.
+equivalente do frontend: `https://www.parserly.com.br/auth/google/callback`.
+Configure tambem `APP_URL=https://www.parserly.com.br` no projeto `parserly-api`
+para que magic links apontem para o dominio canonico.
 
 ### Operacao de Banco em Producao
 
@@ -145,7 +147,9 @@ Key variables are listed in `.env.example`. Essential configurations:
 
 For local Google OAuth, register this redirect URI in Google Cloud Console:
 `http://localhost:3000/auth/google/callback`. In production, register the equivalent
-public frontend URL, for example `https://parserly.vercel.app/auth/google/callback`.
+public frontend URL: `https://www.parserly.com.br/auth/google/callback`.
+Also configure `APP_URL=https://www.parserly.com.br` in the `parserly-api` project
+so magic links point to the canonical domain.
 
 ### Production Database Operations
 

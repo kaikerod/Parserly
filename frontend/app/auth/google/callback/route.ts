@@ -3,6 +3,7 @@ import type { GoogleOAuthCallbackResponse } from "@/types/auth";
 
 const LOCAL_API_BASE_URL = "http://localhost:8000";
 const CANONICAL_API_BASE_URL = "https://parserly-api.vercel.app";
+const CANONICAL_APP_BASE_URL = "https://www.parserly.com.br";
 const PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX = "parserly-";
 const VERCEL_TEAM_HOST_SUFFIX = "-kaikerods-projects.vercel.app";
 const API_BASE_URL = resolveApiBaseUrl();
@@ -172,6 +173,10 @@ function isParserlyImmutableDeploymentUrl(url: string) {
 }
 
 function createPublicUrl(request: NextRequest, pathname: string) {
+  if (isVercelProductionTarget()) {
+    return new URL(pathname, CANONICAL_APP_BASE_URL);
+  }
+
   const forwardedHost = request.headers.get("x-forwarded-host");
   const host = forwardedHost ?? request.headers.get("host");
 

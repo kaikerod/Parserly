@@ -7,6 +7,7 @@ import type { AuthSessionResponse, LogoutResponse, RequestMagicLinkResponse } fr
 import type { CreateChargeResponse } from "@/types/payment";
 
 const API_PREFIX = "/api/v1";
+const CANONICAL_APP_ORIGIN = "https://www.parserly.com.br";
 
 interface RequestOptions {
   signal?: AbortSignal;
@@ -32,7 +33,24 @@ export function apiPath(path: string) {
 }
 
 export function googleOAuthStartPath() {
-  return apiPath("/auth/google/start");
+  return publicAppPath(apiPath("/auth/google/start"));
+}
+
+function publicAppPath(path: string) {
+  if (typeof window === "undefined" || isLocalBrowserOrigin(window.location.origin)) {
+    return path;
+  }
+
+  return new URL(path, CANONICAL_APP_ORIGIN).toString();
+}
+
+function isLocalBrowserOrigin(origin: string) {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
 }
 
 export async function requestMagicLink(email: string): Promise<RequestMagicLinkResponse> {

@@ -10,7 +10,15 @@ REPO_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 DEFAULT_OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free"
 DEFAULT_OPENROUTER_FALLBACK_MODEL = "google/gemma-4-26b-a4b-it"
 CANONICAL_API_PUBLIC_URL = "https://parserly-api.vercel.app"
+CANONICAL_APP_URL = "https://www.parserly.com.br"
+GOOGLE_OAUTH_CALLBACK_PATH = "/auth/google/callback"
 LOCAL_API_PUBLIC_URLS = {"", "http://localhost:8000"}
+LOCAL_APP_PUBLIC_URLS = {"", "http://localhost:3000", "http://localhost:8000"}
+LEGACY_APP_PUBLIC_URLS = {
+    "https://parserly-web.vercel.app",
+    "https://parserly.vercel.app",
+    "https://parserly.com.br",
+}
 PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX = "parserly-"
 VERCEL_TEAM_HOST_SUFFIX = "-kaikerods-projects.vercel.app"
 
@@ -79,7 +87,7 @@ class Settings(BaseSettings):
         return normalized_url
 
     @model_validator(mode="after")
-    def use_canonical_api_url_for_vercel_production(self) -> "Settings":
+    def use_canonical_urls_for_vercel_production(self) -> "Settings":
         if not self._is_vercel_production():
             return self
 
@@ -89,6 +97,14 @@ class Settings(BaseSettings):
             or _is_parserly_immutable_deployment_url(normalized_api_url)
         ):
             self.api_public_url = CANONICAL_API_PUBLIC_URL
+
+        normalized_app_url = self.app_url.strip().rstrip("/")
+        if _should_use_canonical_app_url(normalized_app_url):
+            self.app_url = CANONICAL_APP_URL
+
+        normalized_google_redirect_uri = self.google_oauth_redirect_uri.strip().rstrip("/")
+        if _should_use_canonical_google_oauth_redirect_uri(normalized_google_redirect_uri):
+            self.google_oauth_redirect_uri = f"{CANONICAL_APP_URL}{GOOGLE_OAUTH_CALLBACK_PATH}"
 
         return self
 
@@ -113,7 +129,28 @@ def _is_parserly_immutable_deployment_url(url: str) -> bool:
     deployment_id = hostname.removeprefix(PARSERLY_IMMUTABLE_DEPLOYMENT_PREFIX).removesuffix(
         VERCEL_TEAM_HOST_SUFFIX
     )
-    return deployment_id.isalnum()
+    return bool(deployment_id)
+
+
+def _should_use_canonical_app_url(url: str) -> bool:
+    return (
+        url in LOCAL_APP_PUBLIC_URLS
+        or url in LEGACY_APP_PUBLIC_URLS
+        or _is_parserly_immutable_deployment_url(url)
+    )
+
+
+def _should_use_canonical_google_oauth_redirect_uri(url: str) -> bool:
+    if not url:
+        return False
+
+    parsed_url = urlparse(url)
+    redirect_path = parsed_url.path.rstrip("/") or "/"
+    if redirect_path != GOOGLE_OAUTH_CALLBACK_PATH:
+        return False
+
+    redirect_origin = f"{parsed_url.scheme}://{parsed_url.netloc}".rstrip("/")
+    return _should_use_canonical_app_url(redirect_origin)
 
 
 @lru_cache
