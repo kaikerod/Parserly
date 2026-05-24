@@ -149,6 +149,53 @@ test("upload flow validates file type and size before sending to the API", async
   assert.match(dropzone, /onFileAccepted\(file\)/);
 });
 
+test("dashboard shows staged analysis loading and cleans it up on exit", async () => {
+  const dashboard = await readSource("components/dashboard/dashboard-client.tsx");
+  const steps = [
+    "Analisando seu currículo",
+    "Analisando sua experiência",
+    "Extraindo suas habilidades",
+    "Gerando recomendações"
+  ];
+  const stepIndexes = steps.map((step) => dashboard.indexOf(`"${step}"`));
+
+  stepIndexes.forEach((index, stepIndex) => {
+    assert.ok(index > -1, `loading step ${stepIndex + 1} is present`);
+    if (stepIndex > 0) {
+      assert.ok(index > stepIndexes[stepIndex - 1], `loading step ${stepIndex + 1} is ordered`);
+    }
+  });
+
+  assert.match(
+    dashboard,
+    /const \[activeAnalysisLoadingStepIndex, setActiveAnalysisLoadingStepIndex\] = useState\(0\)/
+  );
+  assert.match(
+    dashboard,
+    /if \(!isSubmitting\) \{\s+setActiveAnalysisLoadingStepIndex\(0\);\s+return;\s+\}/
+  );
+  assert.match(dashboard, /window\.setTimeout\(\(\) => \{/);
+  assert.match(
+    dashboard,
+    /Math\.min\(currentIndex \+ 1, ANALYSIS_LOADING_STEPS\.length - 1\)/
+  );
+  assert.match(dashboard, /window\.clearTimeout\(loadingStepTimer\)/);
+  assert.match(dashboard, /const result = await submitResumeForAnalysis\(file\)/);
+  assert.match(dashboard, /setAnalysis\(result\)/);
+  assert.match(dashboard, /finally \{\s+setIsSubmitting\(false\);\s+\}/);
+
+  assert.match(dashboard, /<AnalysisLoadingBanner/);
+  assert.match(dashboard, /activeStep=\{activeAnalysisLoadingStep\}/);
+  assert.match(dashboard, /afterPayment=\{submissionMode === "after-payment"\}/);
+  assert.match(dashboard, /<AnalysisReportLoadingState/);
+  assert.match(dashboard, /steps=\{ANALYSIS_LOADING_STEPS\}/);
+  assert.match(dashboard, /role="status"/);
+  assert.match(dashboard, /aria-live="polite"/);
+  assert.match(dashboard, /aria-busy=\{isSubmitting\}/);
+  assert.match(dashboard, /disabled=\{isSubmitting\}\s+selectedFile=\{selectedFile\}/);
+  assert.match(dashboard, /disabled=\{isSubmitting \|\| !selectedFile\}/);
+});
+
 test("dashboard gates upload by quota and opens login or paywall paths", async () => {
   const dashboard = await readSource("components/dashboard/dashboard-client.tsx");
   const quotaIndex = dashboard.indexOf("const quota = await getAnalysisQuota()");

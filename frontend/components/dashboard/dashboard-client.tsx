@@ -72,6 +72,13 @@ const PAYMENT_EXPIRED_NOTICE =
   "O QR Code PIX expirou sem confirmação. Reabra o pagamento para gerar um novo QR Code.";
 const QUOTA_CHECK_UNAVAILABLE_MESSAGE =
   "Não conseguimos verificar seus créditos agora. Tente novamente em instantes. Se você fechou o pagamento antes da confirmação, reabra o PIX e aguarde a confirmação.";
+const ANALYSIS_LOADING_STEP_DELAY_MS = 1800;
+const ANALYSIS_LOADING_STEPS = [
+  "Analisando seu currículo",
+  "Analisando sua experiência",
+  "Extraindo suas habilidades",
+  "Gerando recomendações"
+] as const;
 
 const NAVIGATION_DETAILS = [
   {
@@ -137,6 +144,7 @@ export function DashboardClient({
   const [historyPage, setHistoryPage] = useState(0);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeAnalysisLoadingStepIndex, setActiveAnalysisLoadingStepIndex] = useState(0);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isHistoryDetailLoading, setIsHistoryDetailLoading] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
@@ -149,6 +157,7 @@ export function DashboardClient({
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
   const ActiveNavigationIcon = activeNavigationDetail.icon;
   const paymentActionLabel = hasPendingPixCharge ? "Reabrir QR Code PIX" : "Abrir pagamento PIX";
+  const activeAnalysisLoadingStep = ANALYSIS_LOADING_STEPS[activeAnalysisLoadingStepIndex];
 
   useEffect(() => {
     const rotationInterval = window.setInterval(() => {
@@ -167,6 +176,34 @@ export function DashboardClient({
   useEffect(() => {
     selectedHistoryIdRef.current = selectedHistoryId;
   }, [selectedHistoryId]);
+
+  useEffect(() => {
+    if (!isSubmitting) {
+      setActiveAnalysisLoadingStepIndex(0);
+      return;
+    }
+
+    setActiveAnalysisLoadingStepIndex(0);
+  }, [isSubmitting]);
+
+  useEffect(() => {
+    if (
+      !isSubmitting ||
+      activeAnalysisLoadingStepIndex >= ANALYSIS_LOADING_STEPS.length - 1
+    ) {
+      return;
+    }
+
+    const loadingStepTimer = window.setTimeout(() => {
+      setActiveAnalysisLoadingStepIndex((currentIndex) =>
+        Math.min(currentIndex + 1, ANALYSIS_LOADING_STEPS.length - 1)
+      );
+    }, ANALYSIS_LOADING_STEP_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(loadingStepTimer);
+    };
+  }, [activeAnalysisLoadingStepIndex, isSubmitting]);
 
   const clearUserSpecificState = useCallback(() => {
     historyRequestRef.current += 1;
@@ -585,12 +622,10 @@ export function DashboardClient({
             />
 
             {isSubmitting ? (
-              <div className="mt-5 flex items-center gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
-                <Loader2 className="h-5 w-5 animate-spin text-acid" aria-hidden="true" />
-                {submissionMode === "after-payment"
-                  ? "Pagamento confirmado. Análise iniciada automaticamente."
-                  : "Enviando e analisando o currículo..."}
-              </div>
+              <AnalysisLoadingBanner
+                activeStep={activeAnalysisLoadingStep}
+                afterPayment={submissionMode === "after-payment"}
+              />
             ) : null}
 
             {error ? (
@@ -652,11 +687,19 @@ export function DashboardClient({
             ) : null}
           </div>
 
-          <div className="min-w-0 rounded-md border border-line/75 bg-graphite/85 p-5 shadow-panel backdrop-blur">
-            {analysis ? (
+          <div
+            className="min-w-0 rounded-md border border-line/75 bg-graphite/85 p-5 shadow-panel backdrop-blur"
+            aria-busy={isSubmitting}
+          >
+            {isSubmitting ? (
+              <AnalysisReportLoadingState
+                activeStepIndex={activeAnalysisLoadingStepIndex}
+                steps={ANALYSIS_LOADING_STEPS}
+              />
+            ) : analysis ? (
               <AnalysisReport analysis={analysis} />
             ) : (
-              <EmptyReportState isSubmitting={isSubmitting} />
+              <EmptyReportState />
             )}
           </div>
         </div>
@@ -671,6 +714,33 @@ export function DashboardClient({
         onPaymentConfirmed={handlePaymentConfirmed}
       />
     </main>
+  );
+}
+
+function AnalysisLoadingBanner({
+  activeStep,
+  afterPayment
+}: {
+  activeStep: string;
+  afterPayment: boolean;
+}) {
+  return (
+    <div
+      className="mt-5 flex items-start gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper"
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-acid" aria-hidden="true" />
+      <div className="min-w-0">
+        {afterPayment ? (
+          <p className="text-xs font-bold uppercase text-acid">Pagamento confirmado</p>
+        ) : null}
+        <p className="font-semibold">{activeStep}</p>
+        {afterPayment ? (
+          <p className="mt-1 text-xs leading-5 text-paper/60">Análise iniciada automaticamente.</p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -880,18 +950,86 @@ function AnalysisHistoryPanel({
   );
 }
 
-function EmptyReportState({ isSubmitting }: { isSubmitting: boolean }) {
+function AnalysisReportLoadingState({
+  activeStepIndex,
+  steps
+}: {
+  activeStepIndex: number;
+  steps: readonly string[];
+}) {
+  const activeStep = steps[activeStepIndex];
+
+  return (
+    <section
+      className="panel-grid flex min-h-[34rem] flex-col justify-center rounded-md border border-acid/30 bg-night/55 px-5 py-8"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-md bg-acid text-ink shadow-acid">
+        <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
+      </div>
+
+      <div className="mx-auto mt-5 max-w-xl text-center">
+        <p className="text-xs font-bold uppercase text-copper">Análise em andamento</p>
+        <h2 className="mt-2 font-display text-3xl font-semibold text-paper">{activeStep}</h2>
+        <p className="mt-3 text-sm leading-6 text-paper/62">
+          Estamos preparando a leitura ATS e as recomendações para o arquivo enviado.
+        </p>
+      </div>
+
+      <ol className="mx-auto mt-8 grid w-full max-w-2xl gap-3">
+        {steps.map((step, index) => {
+          const isActive = index === activeStepIndex;
+          const isComplete = index < activeStepIndex;
+
+          return (
+            <li
+              key={step}
+              className={[
+                "flex min-h-14 items-center gap-3 rounded-md border px-4 py-3 text-left transition",
+                isActive
+                  ? "border-acid/45 bg-acid/10 text-paper shadow-acid"
+                  : isComplete
+                    ? "border-teal/35 bg-teal/10 text-paper/80"
+                    : "border-line/70 bg-graphite/80 text-paper/48"
+              ].join(" ")}
+              aria-current={isActive ? "step" : undefined}
+            >
+              <span
+                className={[
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-xs font-bold",
+                  isActive
+                    ? "border-acid bg-acid text-ink"
+                    : isComplete
+                      ? "border-teal bg-teal text-ink"
+                      : "border-line/80 bg-night text-paper/45"
+                ].join(" ")}
+              >
+                {isActive ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : isComplete ? (
+                  <span aria-hidden="true">✓</span>
+                ) : (
+                  index + 1
+                )}
+              </span>
+              <span className="min-w-0 text-sm font-semibold">{step}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function EmptyReportState() {
   return (
     <section className="panel-grid flex min-h-[34rem] flex-col items-center justify-center rounded-md border border-dashed border-line/75 bg-night/50 px-6 py-10 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-md bg-violet text-paper shadow-tool">
-        {isSubmitting ? (
-          <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
-        ) : (
-          <FileSearch className="h-7 w-7" aria-hidden="true" />
-        )}
+        <FileSearch className="h-7 w-7" aria-hidden="true" />
       </div>
       <h2 className="mt-5 font-display text-3xl font-semibold text-paper">
-        {isSubmitting ? "Preparando relatório" : "Seu relatório aparecerá aqui"}
+        Seu relatório aparecerá aqui
       </h2>
       <p className="mt-3 max-w-lg text-sm leading-6 text-paper/60">
         Quando a análise retornar, a nota, os diagnósticos por categoria e as recomendações
