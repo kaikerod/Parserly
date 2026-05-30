@@ -100,7 +100,7 @@ export function LoginClient({
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-96 bg-[linear-gradient(115deg,rgba(109,93,252,0.24),transparent_44%),linear-gradient(250deg,rgba(69,255,115,0.14),transparent_38%)]" />
 
       <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-7xl flex-col gap-7">
-        <nav className="flex items-center justify-between border-b border-line/55 pb-4 text-xs text-paper/60">
+        <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-line/55 pb-4 text-xs text-paper/60">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-violet text-paper shadow-glow">
               <FileSearch className="h-5 w-5" aria-hidden="true" />
@@ -116,7 +116,16 @@ export function LoginClient({
             </div>
           </div>
 
-          <span className="hidden text-paper/75 sm:inline">Análise ATS para currículos</span>
+          <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end">
+            <a
+              href="/privacidade"
+              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 font-semibold text-paper/75 transition hover:border-acid/45 hover:bg-fog"
+            >
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              Privacidade
+            </a>
+            <span className="hidden text-paper/75 sm:inline">Análise ATS para currículos</span>
+          </div>
         </nav>
 
         <section className="grid flex-1 items-center gap-6 pb-5 lg:grid-cols-[1fr_29rem]">

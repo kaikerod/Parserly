@@ -17,6 +17,7 @@ import {
   LockKeyhole,
   QrCode,
   RotateCw,
+  ShieldCheck,
   Sparkles,
   UsersRound,
   UserPlus
@@ -464,7 +465,7 @@ export function DashboardClient({
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 bg-[linear-gradient(115deg,rgba(109,93,252,0.22),transparent_42%),linear-gradient(250deg,rgba(69,255,115,0.12),transparent_36%)]" />
 
       <div className="mx-auto flex max-w-7xl flex-col gap-7">
-        <nav className="flex items-center justify-between border-b border-line/55 pb-4 text-xs text-paper/60">
+        <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-line/55 pb-4 text-xs text-paper/60">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-violet text-paper shadow-glow">
               <FileSearch className="h-5 w-5" aria-hidden="true" />
@@ -494,51 +495,61 @@ export function DashboardClient({
             ))}
           </div>
 
-          {isLoadingAuth ? (
-            <button
-              type="button"
-              disabled
-              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/60 disabled:cursor-wait disabled:opacity-80"
+          <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end">
+            <a
+              href="/privacidade"
+              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 font-semibold text-paper/75 transition hover:border-acid/45 hover:bg-fog"
             >
-              <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
-              Confirmando sessao
-            </button>
-          ) : isAuthenticated ? (
-            <div className="flex items-center gap-2">
-              {hasFullFeatureAccess && accessLevel ? (
-                <span
-                  className="hidden max-w-48 truncate rounded-md border border-acid/45 bg-acid/10 px-3 py-2 text-xs font-semibold text-acid sm:inline-flex"
-                >
-                  {accessLevel}
-                </span>
-              ) : null}
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              Privacidade
+            </a>
+
+            {isLoadingAuth ? (
               <button
                 type="button"
-                onClick={handleLogout}
-                className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+                disabled
+                className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/60 disabled:cursor-wait disabled:opacity-80"
               >
-                <LogOut className="h-4 w-4" aria-hidden="true" />
-                Sair
+                <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
+                Confirmando sessao
               </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <a
-                href="/login"
-                className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
-              >
-                <LogIn className="h-4 w-4" aria-hidden="true" />
-                Entrar
-              </a>
-              <a
-                href="/login?intent=registration"
-                className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
-              >
-                <UserPlus className="h-4 w-4" aria-hidden="true" />
-                Cadastrar
-              </a>
-            </div>
-          )}
+            ) : isAuthenticated ? (
+              <>
+                {hasFullFeatureAccess && accessLevel ? (
+                  <span
+                    className="hidden max-w-48 truncate rounded-md border border-acid/45 bg-acid/10 px-3 py-2 text-xs font-semibold text-acid sm:inline-flex"
+                  >
+                    {accessLevel}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                  Sair
+                </button>
+              </>
+            ) : (
+              <>
+                <a
+                  href="/login"
+                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
+                >
+                  <LogIn className="h-4 w-4" aria-hidden="true" />
+                  Entrar
+                </a>
+                <a
+                  href="/login?intent=registration"
+                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
+                >
+                  <UserPlus className="h-4 w-4" aria-hidden="true" />
+                  Cadastrar
+                </a>
+              </>
+            )}
+          </div>
         </nav>
 
         {authError ? (

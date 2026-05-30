@@ -123,6 +123,10 @@ test("deploy headers leave Next static chunks managed and keep app/payment/API p
 
   assert.equal(bySource["/_next/static/:path*"], undefined);
   assert.equal(bySource["/icon.svg"][0].value, "public, max-age=31536000, immutable");
+  assert.equal(
+    bySource["/privacidade"][0].value,
+    "public, max-age=0, s-maxage=300, stale-while-revalidate=3600"
+  );
   assert.equal(bySource["/dashboard"][0].value, "no-store, max-age=0");
   assert.equal(bySource["/auth/verify"][0].value, "no-store, max-age=0");
   assert.equal(bySource["/auth/google/callback"][0].value, "no-store, max-age=0");
@@ -134,6 +138,53 @@ test("deploy headers leave Next static chunks managed and keep app/payment/API p
         header.value === "max-age=31536000; includeSubDomains; preload"
     )
   );
+});
+
+test("privacy policy route is public, discoverable, and includes LGPD sections", async () => {
+  const privacyPage = await readSource("app/privacidade/page.tsx");
+  const dashboard = await readSource("components/dashboard/dashboard-client.tsx");
+  const loginClient = await readSource("components/auth/login-client.tsx");
+  const proxy = await readSource("proxy.ts");
+  const requiredHeadings = [
+    "Introdução: quem somos e nosso compromisso",
+    "Quais dados pessoais coletamos e como coletamos",
+    "Para quais finalidades tratamos seus dados e quais bases legais usamos",
+    "Compartilhamento de dados com terceiros",
+    "Política de cookies e rastreamento",
+    "Seus direitos como titular de dados",
+    "Como mantemos seus dados seguros",
+    "Contato de privacidade e LGPD"
+  ];
+
+  assert.match(privacyPage, /export const dynamic = "force-static"/);
+  assert.match(privacyPage, /title: "Política de Privacidade \| Parserly"/);
+  assert.match(privacyPage, /description:\s+"Entenda como o Parserly coleta, usa, compartilha e protege dados pessoais conforme a LGPD\."/);
+  assert.match(privacyPage, /Resumo rápido/);
+  assert.match(privacyPage, /LAST_UPDATED = "30 de maio de 2026"/);
+  assert.match(privacyPage, /CONTROLLER_NAME = "Parserly"/);
+  assert.match(privacyPage, /CONTROLLER_REGISTRATION = "Sem CNPJ no momento"/);
+  assert.match(privacyPage, /CONTROLLER_OPERATION = "Operação digital no Brasil"/);
+  assert.match(privacyPage, /SITE_DOMAIN = "https:\/\/www\.parserly\.com\.br"/);
+  assert.match(privacyPage, /PRIVACY_CONTACT = "contato\.parserly@gmail\.com"/);
+  assert.match(privacyPage, /Atualmente, não utilizamos cookies não necessários no momento/);
+  assert.match(privacyPage, /Solicitação LGPD/);
+  assert.doesNotMatch(privacyPage, /\[NOME DA SUA EMPRESA\]/);
+  assert.doesNotMatch(privacyPage, /\[CNPJ\/CPF\]/);
+  assert.doesNotMatch(privacyPage, /\[ENDEREÇO COMPLETO\]/);
+  assert.doesNotMatch(privacyPage, /\[DOMÍNIO DO SITE\]/);
+  assert.doesNotMatch(privacyPage, /\[E-MAIL DO DPO\/PRIVACIDADE\]/);
+  assert.match(privacyPage, /id="contato-dpo"/);
+  assert.match(privacyPage, /confirmar\s+sua\s+identidade/);
+  assert.doesNotMatch(privacyPage, /\bfetch\(/);
+  assert.doesNotMatch(privacyPage, /cookies\(/);
+
+  requiredHeadings.forEach((heading) => {
+    assert.match(privacyPage, new RegExp(escapeRegExp(heading)));
+  });
+
+  assert.match(dashboard, /href="\/privacidade"/);
+  assert.match(loginClient, /href="\/privacidade"/);
+  assert.doesNotMatch(proxy, /"\/privacidade"/);
 });
 
 test("upload flow validates file type and size before sending to the API", async () => {
@@ -383,3 +434,7 @@ test("paywall creates PIX charge, listens for confirmation, and handles expirati
   assert.match(paywall, /markChargeExpired\(\)/);
   assert.match(paywall, /onPaymentConfirmed\(\)/);
 });
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
