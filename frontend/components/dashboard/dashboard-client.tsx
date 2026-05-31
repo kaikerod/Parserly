@@ -61,9 +61,9 @@ const GUEST_DASHBOARD_METRICS = [
 ];
 
 const AUTH_RESOLVING_DASHBOARD_METRICS = [
-  { label: "Sessao", value: "Confirmando", detail: "validacao segura" },
-  { label: "Arquivos", value: "PDF/DOCX", detail: "ate 5 MB" },
-  { label: "Historico", value: "Aguarde", detail: "carregamento privado" }
+  { label: "Sessão", value: "Confirmando", detail: "validação segura" },
+  { label: "Arquivos", value: "PDF/DOCX", detail: "até 5 MB" },
+  { label: "Histórico", value: "Aguarde", detail: "carregamento privado" }
 ];
 
 const PAYMENT_REQUIRED_NOTICE =
@@ -163,20 +163,6 @@ export function DashboardClient({
   const paymentActionLabel = hasPendingPixCharge ? "Reabrir QR Code PIX" : "Abrir pagamento PIX";
   const activeAnalysisLoadingStep = ANALYSIS_LOADING_STEPS[activeAnalysisLoadingStepIndex];
   const hasFullFeatureAccess = permissions.includes(ALL_FEATURES_PERMISSION);
-
-  useEffect(() => {
-    const rotationInterval = window.setInterval(() => {
-      setActiveNavigationDetail((currentItem) => {
-        const currentIndex = NAVIGATION_DETAILS.findIndex((item) => item.label === currentItem.label);
-        const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % NAVIGATION_DETAILS.length;
-        return NAVIGATION_DETAILS[nextIndex];
-      });
-    }, 7000);
-
-    return () => {
-      window.clearInterval(rotationInterval);
-    };
-  }, []);
 
   useEffect(() => {
     selectedHistoryIdRef.current = selectedHistoryId;
@@ -462,10 +448,8 @@ export function DashboardClient({
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-5 text-paper sm:px-6 lg:px-8">
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 bg-[linear-gradient(115deg,rgba(109,93,252,0.22),transparent_42%),linear-gradient(250deg,rgba(69,255,115,0.12),transparent_36%)]" />
-
       <div className="mx-auto flex max-w-7xl flex-col gap-7">
-        <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-line/55 pb-4 text-xs text-paper/60">
+        <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-line/60 pb-4 text-xs text-paper/60">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-violet text-paper shadow-glow">
               <FileSearch className="h-5 w-5" aria-hidden="true" />
@@ -498,7 +482,7 @@ export function DashboardClient({
           <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end">
             <a
               href="/privacidade"
-              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 font-semibold text-paper/75 transition hover:border-acid/45 hover:bg-fog"
+              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 font-semibold text-paper/75 transition hover:border-acid/50 hover:bg-fog"
             >
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               Privacidade
@@ -510,14 +494,17 @@ export function DashboardClient({
                 disabled
                 className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/60 disabled:cursor-wait disabled:opacity-80"
               >
-                <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
-                Confirmando sessao
+                <Loader2
+                  className="h-4 w-4 animate-spin text-acid motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+                Confirmando sessão
               </button>
             ) : isAuthenticated ? (
               <>
                 {hasFullFeatureAccess && accessLevel ? (
                   <span
-                    className="hidden max-w-48 truncate rounded-md border border-acid/45 bg-acid/10 px-3 py-2 text-xs font-semibold text-acid sm:inline-flex"
+                    className="hidden max-w-48 truncate rounded-md border border-acid/50 bg-acid/10 px-3 py-2 text-xs font-semibold text-acid sm:inline-flex"
                   >
                     {accessLevel}
                   </span>
@@ -525,7 +512,7 @@ export function DashboardClient({
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <LogOut className="h-4 w-4" aria-hidden="true" />
                   Sair
@@ -535,14 +522,14 @@ export function DashboardClient({
               <>
                 <a
                   href="/login"
-                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
+                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog"
                 >
                   <LogIn className="h-4 w-4" aria-hidden="true" />
                   Entrar
                 </a>
                 <a
                   href="/login?intent=registration"
-                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/45 hover:bg-fog"
+                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog"
                 >
                   <UserPlus className="h-4 w-4" aria-hidden="true" />
                   Cadastrar
@@ -553,7 +540,7 @@ export function DashboardClient({
         </nav>
 
         {authError ? (
-          <div className="flex items-start justify-between gap-3 rounded-md border border-amber/35 bg-amber/10 px-4 py-3 text-sm text-paper">
+          <div className="flex items-start justify-between gap-3 rounded-md border border-amber/40 bg-amber/10 px-4 py-3 text-sm text-paper">
             <div className="flex min-w-0 items-start gap-3">
               <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber" aria-hidden="true" />
               <p>{authError}</p>
@@ -561,7 +548,7 @@ export function DashboardClient({
             <button
               type="button"
               onClick={() => void refreshSession()}
-              className="focus-ring inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/45 hover:bg-fog"
+              className="focus-ring inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/50 hover:bg-fog"
             >
               <RotateCw className="h-4 w-4" aria-hidden="true" />
               Tentar novamente
@@ -570,35 +557,32 @@ export function DashboardClient({
         ) : null}
 
         <section
-          aria-live="polite"
-          className="hidden items-start gap-4 rounded-md border border-line/70 bg-graphite/80 p-4 shadow-tool backdrop-blur md:flex"
+          className="hidden items-start gap-4 rounded-md border border-line/70 bg-graphite/90 p-4 md:flex"
         >
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-night text-acid">
             <ActiveNavigationIcon className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase text-copper">{activeNavigationDetail.label}</p>
+            <p className="text-xs font-bold text-copper">{activeNavigationDetail.label}</p>
             <h2 className="mt-1 font-display text-xl font-semibold text-paper">
               {activeNavigationDetail.title}
             </h2>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-paper/62">
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-paper/60">
               {activeNavigationDetail.description}
             </p>
           </div>
         </section>
 
-        <header className="grid gap-6 border-b border-line/55 pb-7 lg:grid-cols-[1fr_32rem] lg:items-end">
+        <header className="grid gap-6 border-b border-line/60 pb-7 lg:grid-cols-[1fr_32rem] lg:items-end">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-md border border-line/70 bg-graphite/80 px-3 py-1.5 text-xs font-bold uppercase text-paper/70 shadow-tool backdrop-blur">
+            <div className="inline-flex items-center gap-2 rounded-md border border-line/70 bg-graphite/90 px-3 py-1.5 text-xs font-bold text-paper/75">
               <FileSearch className="h-4 w-4 text-acid" aria-hidden="true" />
-              ATS Resume Analyzer
+              Analisador ATS
             </div>
-            <h1 className="mt-5 max-w-3xl font-display text-5xl font-semibold leading-none text-paper md:text-6xl">
-              Seu currículo.
-              <br />
-              Claramente <span className="accent-text">estruturado.</span>
+            <h1 className="mt-5 max-w-2xl text-balance font-display text-4xl font-semibold leading-none text-paper md:text-5xl">
+              Analise seu currículo antes da candidatura
             </h1>
-            <div className="mt-5 max-w-2xl text-sm leading-6 text-paper/65">
+            <div className="mt-5 max-w-2xl text-sm leading-6 text-paper/70">
               <p>
                 Envie um PDF ou DOCX, receba a nota ATS e veja as correções que mais impactam sua
                 próxima candidatura.
@@ -610,13 +594,13 @@ export function DashboardClient({
             {dashboardMetrics.map((metric) => (
               <div
                 key={metric.label}
-                className="rounded-md border border-line/70 bg-graphite/80 p-4 shadow-tool backdrop-blur"
+                className="rounded-md border border-line/70 bg-graphite/90 p-4"
               >
-                <p className="text-xs font-semibold uppercase text-paper/45">{metric.label}</p>
+                <p className="text-xs font-semibold text-paper/60">{metric.label}</p>
                 <p className="mt-2 font-display text-2xl font-semibold text-copper">
                   {metric.value}
                 </p>
-                <p className="mt-1 text-xs text-paper/55">{metric.detail}</p>
+                <p className="mt-1 text-xs text-paper/60">{metric.detail}</p>
               </div>
             ))}
           </div>
@@ -627,11 +611,11 @@ export function DashboardClient({
             <section
               id="upload-panel"
               aria-labelledby="upload-title"
-              className="rounded-md border border-line/75 bg-graphite/90 p-5 shadow-panel backdrop-blur"
+              className="rounded-md border border-line/75 bg-graphite/95 p-5"
             >
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-acid">Upload</p>
+                  <p className="text-xs font-semibold text-acid">Upload</p>
                   <h2 id="upload-title" className="mt-1 font-display text-2xl font-semibold">
                     Novo currículo
                   </h2>
@@ -639,58 +623,58 @@ export function DashboardClient({
                 <LockKeyhole className="h-6 w-6 text-paper/30" aria-hidden="true" />
               </div>
 
-            <Dropzone
-              disabled={isSubmitting}
-              selectedFile={selectedFile}
-              onFileAccepted={(file) => void runAnalysis(file)}
-            />
-
-            {isSubmitting ? (
-              <AnalysisLoadingBanner
-                activeStep={activeAnalysisLoadingStep}
-                afterPayment={submissionMode === "after-payment"}
+              <Dropzone
+                disabled={isSubmitting}
+                selectedFile={selectedFile}
+                onFileAccepted={(file) => void runAnalysis(file)}
               />
-            ) : null}
 
-            {error ? (
-              <div className="mt-5 flex items-start gap-3 rounded-md border border-coral/35 bg-coral/10 px-4 py-3 text-sm text-paper">
-                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral" aria-hidden="true" />
-                <div className="min-w-0">
-                  <p>{error}</p>
-                  {hasPendingPixCharge ? (
-                    <PaymentActionButton label="Reabrir QR Code PIX" onClick={handleOpenPayment} />
-                  ) : null}
+              {isSubmitting ? (
+                <AnalysisLoadingBanner
+                  activeStep={activeAnalysisLoadingStep}
+                  afterPayment={submissionMode === "after-payment"}
+                />
+              ) : null}
+
+              {error ? (
+                <div className="mt-5 flex items-start gap-3 rounded-md border border-coral/40 bg-coral/10 px-4 py-3 text-sm text-paper">
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p>{error}</p>
+                    {hasPendingPixCharge ? (
+                      <PaymentActionButton label="Reabrir QR Code PIX" onClick={handleOpenPayment} />
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {paymentNotice ? (
-              <div className="mt-5 flex items-start gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
-                <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
-                <div className="min-w-0">
-                  <p>{paymentNotice}</p>
-                  {isAuthenticated ? (
-                    <PaymentActionButton label={paymentActionLabel} onClick={handleOpenPayment} />
-                  ) : null}
+              {paymentNotice ? (
+                <div className="mt-5 flex items-start gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
+                  <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p>{paymentNotice}</p>
+                    {isAuthenticated ? (
+                      <PaymentActionButton label={paymentActionLabel} onClick={handleOpenPayment} />
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {analysis && selectedFile ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedFile) {
-                    void runAnalysis(selectedFile);
-                  }
-                }}
-                disabled={isSubmitting || !selectedFile}
-                className="focus-ring mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-line/80 bg-night px-4 py-2 text-sm font-semibold text-paper transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <RotateCw className="h-4 w-4" aria-hidden="true" />
-                Reanalisar arquivo selecionado
-              </button>
-            ) : null}
+              {analysis && selectedFile ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedFile) {
+                      void runAnalysis(selectedFile);
+                    }
+                  }}
+                  disabled={isSubmitting || !selectedFile}
+                  className="focus-ring mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-line/80 bg-night px-4 py-2 text-sm font-semibold text-paper transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RotateCw className="h-4 w-4" aria-hidden="true" />
+                  Reanalisar arquivo selecionado
+                </button>
+              ) : null}
             </section>
 
             {isLoadingAuth || isAuthenticated ? (
@@ -712,7 +696,7 @@ export function DashboardClient({
           </div>
 
           <div
-            className="min-w-0 rounded-md border border-line/75 bg-graphite/85 p-5 shadow-panel backdrop-blur"
+            className="min-w-0 rounded-md border border-line/75 bg-graphite/90 p-5"
             aria-busy={isSubmitting}
           >
             {isSubmitting ? (
@@ -754,10 +738,13 @@ function AnalysisLoadingBanner({
       role="status"
       aria-live="polite"
     >
-      <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-acid" aria-hidden="true" />
+      <Loader2
+        className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-acid motion-reduce:animate-none"
+        aria-hidden="true"
+      />
       <div className="min-w-0">
         {afterPayment ? (
-          <p className="text-xs font-bold uppercase text-acid">Pagamento confirmado</p>
+          <p className="text-xs font-bold text-acid">Pagamento confirmado</p>
         ) : null}
         <p className="font-semibold">{activeStep}</p>
         {afterPayment ? (
@@ -773,7 +760,7 @@ function PaymentActionButton({ label, onClick }: { label: string; onClick: () =>
     <button
       type="button"
       onClick={onClick}
-      className="focus-ring mt-3 inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/45 hover:bg-fog"
+      className="focus-ring mt-3 inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/50 hover:bg-fog"
     >
       <QrCode className="h-4 w-4 text-acid" aria-hidden="true" />
       {label}
@@ -821,19 +808,19 @@ function AnalysisHistoryPanel({
   return (
     <section
       aria-labelledby="history-title"
-      className="rounded-md border border-line/75 bg-graphite/90 p-5 shadow-panel backdrop-blur"
+      className="rounded-md border border-line/75 bg-graphite/95 p-5"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-copper">Histórico</p>
+          <p className="text-xs font-semibold text-copper">Histórico</p>
           <h2 id="history-title" className="mt-1 font-display text-2xl font-semibold">
             Análises salvas
           </h2>
-          <p className="mt-1 text-xs text-paper/50">{total} registros encontrados</p>
+          <p className="mt-1 text-xs text-paper/60">{total} registros encontrados</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {hasMultiplePages ? (
-            <div className="hidden items-center rounded-md border border-line/70 bg-night/70 text-xs text-paper/55 sm:flex">
+            <div className="hidden items-center rounded-md border border-line/70 bg-night/70 text-xs text-paper/60 sm:flex">
               <button
                 type="button"
                 onClick={() => onPageChange(currentPage - 1)}
@@ -861,11 +848,14 @@ function AnalysisHistoryPanel({
             type="button"
             onClick={onRefresh}
             disabled={isAuthLoading || isLoading}
-            className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/70 transition hover:border-acid/45 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+            className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/70 transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
             aria-label="Atualizar histórico"
           >
             {isAuthLoading || isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <Loader2
+                className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
             ) : (
               <RotateCw className="h-4 w-4" aria-hidden="true" />
             )}
@@ -874,7 +864,7 @@ function AnalysisHistoryPanel({
       </div>
 
       {error ? (
-        <div className="mt-4 flex items-start gap-3 rounded-md border border-coral/35 bg-coral/10 px-3 py-3 text-sm text-paper">
+        <div className="mt-4 flex items-start gap-3 rounded-md border border-coral/40 bg-coral/10 px-3 py-3 text-sm text-paper">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-coral" aria-hidden="true" />
           <p>{error}</p>
         </div>
@@ -882,23 +872,17 @@ function AnalysisHistoryPanel({
 
       <div className="mt-4 space-y-2">
         {isAuthLoading ? (
-          <div className="flex items-center gap-3 rounded-md border border-line/70 bg-night/70 px-3 py-4 text-sm text-paper/60">
-            <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
-            Confirmando sessao antes de carregar o historico...
-          </div>
+          <HistoryLoadingSkeleton label="Confirmando sessão antes de carregar o histórico..." />
         ) : null}
 
         {!isAuthLoading && isLoading && items.length === 0 ? (
-          <div className="flex items-center gap-3 rounded-md border border-line/70 bg-night/70 px-3 py-4 text-sm text-paper/60">
-            <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
-            Carregando histórico...
-          </div>
+          <HistoryLoadingSkeleton label="Carregando histórico..." />
         ) : null}
 
         {!isAuthLoading && !isLoading && items.length === 0 ? (
-          <div className="rounded-md border border-dashed border-line/70 bg-night/50 px-4 py-5 text-sm text-paper/60">
-            <History className="mb-3 h-5 w-5 text-paper/35" aria-hidden="true" />
-            Nenhuma análise salva ainda.
+          <div className="rounded-md border border-dashed border-line/70 bg-night/50 px-4 py-5 text-sm text-paper/70">
+            <History className="mb-3 h-5 w-5 text-paper/40" aria-hidden="true" />
+            Envie um currículo para salvar a primeira análise.
           </div>
         ) : null}
 
@@ -915,7 +899,7 @@ function AnalysisHistoryPanel({
                 "focus-ring grid min-h-20 w-full grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md border px-3 py-3 text-left transition",
                 isSelected
                   ? "border-acid/50 bg-acid/10"
-                  : "border-line/70 bg-night/65 hover:border-acid/35 hover:bg-fog"
+                  : "border-line/70 bg-night/70 hover:border-acid/40 hover:bg-fog"
               ].join(" ")}
               aria-pressed={isSelected}
             >
@@ -923,7 +907,7 @@ function AnalysisHistoryPanel({
                 <span className="block truncate text-sm font-semibold text-paper">
                   {item.filename}
                 </span>
-                <span className="mt-2 flex items-center gap-1.5 text-xs text-paper/50">
+                <span className="mt-2 flex items-center gap-1.5 text-xs text-paper/60">
                   <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   {formatAnalysisDate(item.created_at)}
                 </span>
@@ -932,9 +916,12 @@ function AnalysisHistoryPanel({
                 {item.score}
               </span>
               {isOpening ? (
-                <Loader2 className="h-4 w-4 animate-spin text-acid" aria-hidden="true" />
+                <Loader2
+                  className="h-4 w-4 animate-spin text-acid motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
               ) : (
-                <ChevronRight className="h-4 w-4 text-paper/35" aria-hidden="true" />
+                <ChevronRight className="h-4 w-4 text-paper/40" aria-hidden="true" />
               )}
             </button>
           );
@@ -942,7 +929,7 @@ function AnalysisHistoryPanel({
       </div>
 
       {hasMultiplePages ? (
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/60 pt-4 text-xs text-paper/55">
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/60 pt-4 text-xs text-paper/60">
           <p>
             Mostrando {startItem}-{endItem} de {total}
           </p>
@@ -974,6 +961,26 @@ function AnalysisHistoryPanel({
   );
 }
 
+function HistoryLoadingSkeleton({ label }: { label: string }) {
+  return (
+    <div
+      className="rounded-md border border-line/70 bg-night/70 px-3 py-4"
+      role="status"
+      aria-live="polite"
+    >
+      <p className="text-sm text-paper/70">{label}</p>
+      <div className="mt-4 space-y-3" aria-hidden="true">
+        {[0, 1, 2].map((item) => (
+          <div key={item} className="animate-pulse space-y-2 motion-reduce:animate-none">
+            <div className="h-3 w-3/4 rounded-full bg-paper/20" />
+            <div className="h-2 w-1/2 rounded-full bg-paper/10" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AnalysisReportLoadingState({
   activeStepIndex,
   steps
@@ -985,18 +992,21 @@ function AnalysisReportLoadingState({
 
   return (
     <section
-      className="panel-grid flex min-h-[34rem] flex-col justify-center rounded-md border border-acid/30 bg-night/55 px-5 py-8"
+      className="panel-grid flex min-h-[34rem] flex-col justify-center rounded-md border border-acid/30 bg-night/60 px-5 py-8"
       role="status"
       aria-live="polite"
     >
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-md bg-acid text-ink shadow-acid">
-        <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
+        <Loader2
+          className="h-7 w-7 animate-spin motion-reduce:animate-none"
+          aria-hidden="true"
+        />
       </div>
 
       <div className="mx-auto mt-5 max-w-xl text-center">
-        <p className="text-xs font-bold uppercase text-copper">Análise em andamento</p>
+        <p className="text-xs font-bold text-copper">Análise em andamento</p>
         <h2 className="mt-2 font-display text-3xl font-semibold text-paper">{activeStep}</h2>
-        <p className="mt-3 text-sm leading-6 text-paper/62">
+        <p className="mt-3 text-sm leading-6 text-paper/60">
           Estamos preparando a leitura ATS e as recomendações para o arquivo enviado.
         </p>
       </div>
@@ -1012,10 +1022,10 @@ function AnalysisReportLoadingState({
               className={[
                 "flex min-h-14 items-center gap-3 rounded-md border px-4 py-3 text-left transition",
                 isActive
-                  ? "border-acid/45 bg-acid/10 text-paper shadow-acid"
+                  ? "border-acid/50 bg-acid/10 text-paper"
                   : isComplete
-                    ? "border-teal/35 bg-teal/10 text-paper/80"
-                    : "border-line/70 bg-graphite/80 text-paper/48"
+                    ? "border-teal/40 bg-teal/10 text-paper/80"
+                    : "border-line/70 bg-graphite/80 text-paper/60"
               ].join(" ")}
               aria-current={isActive ? "step" : undefined}
             >
@@ -1026,11 +1036,14 @@ function AnalysisReportLoadingState({
                     ? "border-acid bg-acid text-ink"
                     : isComplete
                       ? "border-teal bg-teal text-ink"
-                      : "border-line/80 bg-night text-paper/45"
+                      : "border-line/80 bg-night text-paper/60"
                 ].join(" ")}
               >
                 {isActive ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  <Loader2
+                    className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : isComplete ? (
                   <span aria-hidden="true">✓</span>
                 ) : (
@@ -1049,7 +1062,7 @@ function AnalysisReportLoadingState({
 function EmptyReportState() {
   return (
     <section className="panel-grid flex min-h-[34rem] flex-col items-center justify-center rounded-md border border-dashed border-line/75 bg-night/50 px-6 py-10 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-md bg-violet text-paper shadow-tool">
+      <div className="flex h-16 w-16 items-center justify-center rounded-md bg-violet text-paper">
         <FileSearch className="h-7 w-7" aria-hidden="true" />
       </div>
       <h2 className="mt-5 font-display text-3xl font-semibold text-paper">
@@ -1061,25 +1074,25 @@ function EmptyReportState() {
       </p>
 
       <div className="mt-8 grid w-full max-w-2xl gap-3 text-left sm:grid-cols-3">
-        <div className="rounded-md border border-line/70 bg-graphite/85 p-4">
-          <p className="text-xs font-semibold uppercase text-paper/45">Score ATS</p>
+        <div className="rounded-md border border-line/70 bg-graphite/90 p-4">
+          <p className="text-xs font-semibold text-paper/60">Score ATS</p>
           <p className="mt-3 font-display text-4xl font-semibold text-acid">82</p>
           <div className="mt-3 h-2 rounded-full bg-line/70">
             <div className="h-full w-4/5 rounded-full bg-acid" />
           </div>
         </div>
-        <div className="rounded-md border border-line/70 bg-graphite/85 p-4">
-          <p className="text-xs font-semibold uppercase text-paper/45">Estrutura</p>
+        <div className="rounded-md border border-line/70 bg-graphite/90 p-4">
+          <p className="text-xs font-semibold text-paper/60">Estrutura</p>
           <div className="mt-4 space-y-2">
             <div className="h-2 w-11/12 rounded-full bg-violet" />
             <div className="h-2 w-8/12 rounded-full bg-paper/20" />
             <div className="h-2 w-10/12 rounded-full bg-paper/20" />
           </div>
         </div>
-        <div className="rounded-md border border-line/70 bg-graphite/85 p-4">
-          <p className="text-xs font-semibold uppercase text-paper/45">Prioridade</p>
+        <div className="rounded-md border border-line/70 bg-graphite/90 p-4">
+          <p className="text-xs font-semibold text-paper/60">Prioridade</p>
           <p className="mt-3 font-display text-3xl font-semibold text-copper">Alta</p>
-          <p className="mt-2 text-xs text-paper/55">palavras-chave</p>
+          <p className="mt-2 text-xs text-paper/60">palavras-chave</p>
         </div>
       </div>
     </section>

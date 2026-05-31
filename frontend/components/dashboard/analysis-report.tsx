@@ -36,17 +36,17 @@ const PRIORITY_META: Record<
 > = {
   high: {
     label: "Alta",
-    className: "border-coral/40 bg-coral/15 text-coral",
+    className: "border-coral/40 bg-coral/20 text-coral",
     icon: AlertTriangle
   },
   medium: {
     label: "Média",
-    className: "border-copper/40 bg-copper/15 text-copper",
+    className: "border-copper/40 bg-copper/20 text-copper",
     icon: CircleDot
   },
   low: {
     label: "Baixa",
-    className: "border-acid/35 bg-acid/10 text-acid",
+    className: "border-acid/40 bg-acid/10 text-acid",
     icon: CheckCircle2
   }
 };
@@ -72,7 +72,7 @@ export function AnalysisReport({ analysis }: AnalysisReportProps) {
     <section aria-labelledby="analysis-report-title" className="space-y-6 text-paper">
       <div className="flex flex-col gap-4 border-b border-line/70 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase text-acid">Relatório ATS</p>
+          <p className="text-xs font-semibold text-acid">Relatório ATS</p>
           <h2
             id="analysis-report-title"
             className="mt-2 break-words font-display text-3xl font-semibold"
@@ -85,30 +85,34 @@ export function AnalysisReport({ analysis }: AnalysisReportProps) {
               : "Cargo não identificado no currículo."}
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-line/70 bg-night px-4 py-2 text-sm text-paper/70 shadow-tool">
+        <div className="flex items-center gap-2 rounded-md border border-line/70 bg-night px-4 py-2 text-sm text-paper/75">
           <BadgeCheck className="h-4 w-4 text-acid" aria-hidden="true" />
           <span>{analysis.analyses_used} análises usadas</span>
         </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[18rem_1fr]">
-        <div className="rounded-md border border-line/70 bg-night p-6 text-paper shadow-tool">
+        <div className="rounded-md border border-line/70 bg-night p-6 text-paper">
           <div
             className="mx-auto flex h-44 w-44 items-center justify-center rounded-full"
             style={{
               background: `conic-gradient(#45ff73 ${score * 3.6}deg, rgba(244,241,234,0.14) 0deg)`
             }}
             aria-label={`Nota geral ${score} de 100`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={score}
+            role="meter"
           >
             <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full border border-line bg-graphite">
               <span className="font-display text-5xl font-semibold leading-none text-paper">
                 {score}
               </span>
-              <span className="mt-1 text-xs uppercase text-paper/50">de 100</span>
+              <span className="mt-1 text-xs text-paper/60">de 100</span>
             </div>
           </div>
           <div className="mt-6 space-y-2 text-center">
-            <p className="text-sm font-semibold uppercase text-acid">Nota geral</p>
+            <p className="text-sm font-semibold text-acid">Nota geral</p>
             <p className="text-sm leading-6 text-paper/60">
               Combina aderência a palavras-chave, legibilidade do parser e clareza da estrutura.
             </p>
@@ -118,11 +122,12 @@ export function AnalysisReport({ analysis }: AnalysisReportProps) {
         <div className="grid gap-3 sm:grid-cols-2">
           {CATEGORY_ORDER.map((categoryKey) => {
             const category = report.categories[categoryKey];
+            const categoryScore = Math.max(0, Math.min(100, category.score));
 
             return (
               <article
                 key={categoryKey}
-                className="rounded-md border border-line/70 bg-night/70 p-4 shadow-tool"
+                className="rounded-md border border-line/70 bg-night/70 p-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -132,13 +137,20 @@ export function AnalysisReport({ analysis }: AnalysisReportProps) {
                     <p className="mt-2 text-sm leading-6 text-paper/60">{category.feedback}</p>
                   </div>
                   <span className="rounded-md border border-line/70 bg-graphite px-2.5 py-1 text-sm font-bold text-acid">
-                    {category.score}
+                    {categoryScore}
                   </span>
                 </div>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-line/65">
+                <div
+                  className="mt-4 h-2 overflow-hidden rounded-full bg-line/70"
+                  role="meter"
+                  aria-label={`Pontuação de ${CATEGORY_LABELS[categoryKey]}`}
+                  aria-valuemax={100}
+                  aria-valuemin={0}
+                  aria-valuenow={categoryScore}
+                >
                   <div
                     className="h-full rounded-full bg-acid"
-                    style={{ width: `${Math.max(0, Math.min(100, category.score))}%` }}
+                    style={{ width: `${categoryScore}%` }}
                   />
                 </div>
               </article>
@@ -150,7 +162,7 @@ export function AnalysisReport({ analysis }: AnalysisReportProps) {
       <section aria-labelledby="recommendations-title" className="space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase text-copper">Próximas ações</p>
+            <p className="text-xs font-semibold text-copper">Próximas ações</p>
             <h3 id="recommendations-title" className="mt-1 font-display text-2xl font-semibold">
               Recomendações priorizadas
             </h3>
@@ -159,19 +171,19 @@ export function AnalysisReport({ analysis }: AnalysisReportProps) {
         </div>
 
         <div className="space-y-3">
-          {recommendations.map((recommendation, index) => {
+          {recommendations.length > 0 ? recommendations.map((recommendation, index) => {
             const meta = PRIORITY_META[recommendation.priority];
             const PriorityIcon = meta.icon;
 
             return (
               <article
                 key={`${recommendation.priority}-${recommendation.action}-${index}`}
-                className="grid gap-4 rounded-md border border-line/70 bg-night/70 p-4 shadow-tool md:grid-cols-[9rem_1fr]"
+                className="grid gap-4 rounded-md border border-line/70 bg-night/70 p-4 md:grid-cols-[9rem_1fr]"
               >
                 <div>
                   <span
                     className={[
-                      "inline-flex min-w-24 items-center gap-2 rounded-md border px-3 py-1 text-xs font-bold uppercase",
+                      "inline-flex min-w-24 items-center gap-2 rounded-md border px-3 py-1 text-xs font-bold",
                       meta.className
                     ].join(" ")}
                   >
@@ -190,7 +202,11 @@ export function AnalysisReport({ analysis }: AnalysisReportProps) {
                 </div>
               </article>
             );
-          })}
+          }) : (
+            <div className="rounded-md border border-dashed border-line/70 bg-night/50 px-4 py-5 text-sm text-paper/70">
+              Nenhuma recomendação prioritária foi retornada para este relatório.
+            </div>
+          )}
         </div>
       </section>
     </section>
