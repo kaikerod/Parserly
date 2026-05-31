@@ -170,7 +170,20 @@ export function DashboardClient({
   const paymentActionLabel = hasPendingPixCharge ? "Reabrir QR Code PIX" : "Abrir pagamento PIX";
   const activeAnalysisLoadingStep = ANALYSIS_LOADING_STEPS[activeAnalysisLoadingStepIndex];
   const hasFullFeatureAccess = permissions.includes(ALL_FEATURES_PERMISSION);
-  const reportStageKey = isSubmitting ? "analysis-loading" : analysis ? `analysis-${analysis.id}` : "empty";
+  const hasPendingReportPayment =
+    isAuthenticated &&
+    !analysis &&
+    !isSubmitting &&
+    pendingFile !== null &&
+    (paymentNotice !== null || hasPendingPixCharge || paywallOpen);
+  const pendingReportFileName = pendingFile?.name ?? selectedFile?.name ?? "Currículo selecionado";
+  const reportStageKey = isSubmitting
+    ? "analysis-loading"
+    : analysis
+      ? `analysis-${analysis.id}`
+      : hasPendingReportPayment
+        ? "payment-required"
+        : "empty";
 
   useEffect(() => {
     selectedHistoryIdRef.current = selectedHistoryId;
@@ -707,10 +720,13 @@ export function DashboardClient({
           </div>
 
           <div
-            className="min-w-0 rounded-md border border-line/75 bg-graphite/90 p-5"
+            className="flex min-w-0 flex-col rounded-md border border-line/75 bg-graphite/90 p-5"
             aria-busy={isSubmitting}
           >
-            <div key={reportStageKey} className="dashboard-report-stage">
+            <div
+              key={reportStageKey}
+              className="dashboard-report-stage flex min-h-[34rem] flex-1 flex-col"
+            >
               {isSubmitting ? (
                 <AnalysisReportLoadingState
                   activeStepIndex={activeAnalysisLoadingStepIndex}
@@ -718,6 +734,14 @@ export function DashboardClient({
                 />
               ) : analysis ? (
                 <AnalysisReport analysis={analysis} />
+              ) : hasPendingReportPayment ? (
+                <PaymentRequiredReportState
+                  actionLabel={paymentActionLabel}
+                  fileName={pendingReportFileName}
+                  hasPendingPixCharge={hasPendingPixCharge}
+                  notice={paymentNotice}
+                  onOpenPayment={handleOpenPayment}
+                />
               ) : (
                 <EmptyReportState />
               )}
@@ -780,6 +804,89 @@ function PaymentActionButton({ label, onClick }: { label: string; onClick: () =>
       <QrCode className="h-4 w-4 text-acid" aria-hidden="true" />
       {label}
     </button>
+  );
+}
+
+interface PaymentRequiredReportStateProps {
+  actionLabel: string;
+  fileName: string;
+  hasPendingPixCharge: boolean;
+  notice: string | null;
+  onOpenPayment: () => void;
+}
+
+function PaymentRequiredReportState({
+  actionLabel,
+  fileName,
+  hasPendingPixCharge,
+  notice,
+  onOpenPayment
+}: PaymentRequiredReportStateProps) {
+  return (
+    <section className="panel-grid flex min-h-[34rem] flex-1 flex-col rounded-md border border-acid/25 bg-night/60 p-5 text-paper sm:p-6">
+      <div className="flex flex-1 flex-col justify-between gap-8">
+        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center py-2 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-md bg-acid text-ink">
+            <CreditCard className="h-7 w-7" aria-hidden="true" />
+          </div>
+          <p className="mt-5 text-xs font-bold text-copper">Quota atingida</p>
+          <h2 className="mt-2 font-display text-3xl font-semibold text-paper">
+            Libere esta análise via PIX
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-paper/70">
+            {notice ??
+              "Você atingiu o limite gratuito. O pagamento libera novas análises e mantém este currículo na fila."}
+          </p>
+
+          <div className="mx-auto mt-6 w-full max-w-xl rounded-md border border-line/70 bg-graphite/90 p-4 text-left">
+            <p className="text-xs font-semibold text-paper/60">Arquivo em espera</p>
+            <p className="mt-2 truncate text-sm font-semibold text-paper">{fileName}</p>
+            <p className="mt-2 text-xs leading-5 text-paper/60">
+              Depois da confirmação, a análise inicia automaticamente.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpenPayment}
+            className={`focus-ring mx-auto mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-acid px-5 py-3 text-sm font-bold text-ink transition hover:bg-mint ${BUTTON_MOTION_CLASS}`}
+          >
+            <QrCode className="h-4 w-4" aria-hidden="true" />
+            {actionLabel}
+          </button>
+        </div>
+
+        <ol
+          className="grid gap-3 text-left sm:grid-cols-3"
+          aria-label="Próximos passos do pagamento"
+        >
+          {[
+            {
+              title: hasPendingPixCharge ? "QR Code disponível" : "Gerar PIX",
+              description: hasPendingPixCharge
+                ? "Reabra o QR Code e conclua o pagamento pendente."
+                : "Abra o checkout para gerar o QR Code do Mercado Pago."
+            },
+            {
+              title: "Confirmar pagamento",
+              description: "A tela verifica a confirmação sem exigir novo envio do arquivo."
+            },
+            {
+              title: "Receber relatório",
+              description: "O score ATS e as recomendações aparecem neste painel."
+            }
+          ].map((step, index) => (
+            <li key={step.title} className="rounded-md border border-line/70 bg-graphite/85 p-4">
+              <span className="flex h-8 w-8 items-center justify-center rounded-md border border-acid/40 bg-acid/10 text-xs font-bold text-acid">
+                {index + 1}
+              </span>
+              <p className="mt-3 text-sm font-semibold text-paper">{step.title}</p>
+              <p className="mt-2 text-xs leading-5 text-paper/60">{step.description}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
   );
 }
 
@@ -1010,7 +1117,7 @@ function AnalysisReportLoadingState({
 
   return (
     <section
-      className="panel-grid flex min-h-[34rem] flex-col justify-center rounded-md border border-acid/30 bg-night/60 px-5 py-8"
+      className="panel-grid flex min-h-[34rem] flex-1 flex-col justify-center rounded-md border border-acid/30 bg-night/60 px-5 py-8"
       role="status"
       aria-live="polite"
     >
@@ -1094,7 +1201,7 @@ function AnalysisReportLoadingState({
 
 function EmptyReportState() {
   return (
-    <section className="panel-grid flex min-h-[34rem] flex-col items-center justify-center rounded-md border border-dashed border-line/75 bg-night/50 px-6 py-10 text-center">
+    <section className="panel-grid flex min-h-[34rem] flex-1 flex-col items-center justify-center rounded-md border border-dashed border-line/75 bg-night/50 px-6 py-10 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-md bg-violet text-paper">
         <FileSearch className="h-7 w-7" aria-hidden="true" />
       </div>
