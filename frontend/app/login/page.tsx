@@ -41,7 +41,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const isRegistrationIntent = intentCode === "registration" || isFreeLimitReason;
   const initialNotice =
     isFreeLimitReason
-      ? "Você atingiu o limite gratuito. Entre com Google ou use seu e-mail para continuar pelo checkout PIX."
+      ? "Você atingiu o limite gratuito. Entre com Google ou use seu e-mail para continuar."
       : undefined;
 
   return (
