@@ -27,13 +27,13 @@ interface LoginClientProps {
 
 const LOGIN_MARKERS = [
   { label: "Acesso", value: "Google" },
-  { label: "Alternativa", value: "magic link" },
+  { label: "Alternativa", value: "link por e-mail" },
   { label: "Sessão", value: "7 dias" }
 ];
 
 const REGISTRATION_MARKERS = [
   { label: "Cadastro", value: "Google" },
-  { label: "Alternativa", value: "magic link" },
+  { label: "Alternativa", value: "link por e-mail" },
   { label: "Checkout", value: "PIX" }
 ];
 
@@ -61,6 +61,12 @@ export function LoginClient({
   const privacyDescriptionId = privacyError
     ? "privacy-agreement-help privacy-agreement-error"
     : "privacy-agreement-help";
+  const submitButtonClassName = [
+    "focus-ring inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-bold transition disabled:cursor-not-allowed",
+    isRegistrationActionDisabled
+      ? "bg-fog text-paper/45"
+      : "bg-acid text-ink hover:bg-mint motion-safe:hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-70"
+  ].join(" ");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -114,6 +120,22 @@ export function LoginClient({
     return false;
   }
 
+  function handleEmailChange(value: string) {
+    setEmail(value);
+
+    if (phase === "sent") {
+      setPhase("idle");
+      setSentTo(null);
+      setMagicLink(null);
+      setCopyState("idle");
+    }
+
+    if (phase === "error") {
+      setPhase("idle");
+      setError(null);
+    }
+  }
+
   async function handleCopyMagicLink() {
     if (!magicLink) {
       return;
@@ -130,8 +152,6 @@ export function LoginClient({
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-5 text-paper sm:px-6 lg:px-8">
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-96 bg-[linear-gradient(115deg,rgba(109,93,252,0.24),transparent_44%),linear-gradient(250deg,rgba(69,255,115,0.14),transparent_38%)]" />
-
       <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-7xl flex-col gap-7">
         <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-line/55 pb-4 text-xs text-paper/60">
           <div className="flex min-w-0 items-center gap-3">
@@ -143,8 +163,8 @@ export function LoginClient({
               <span className="hidden text-paper/30 sm:inline">/</span>
               <span className="hidden truncate sm:inline">
                 {isRegistrationFlow
-                  ? "Cadastro com Google ou magic link"
-                  : "Login com Google ou magic link"}
+                  ? "Cadastro com Google ou link por e-mail"
+                  : "Login com Google ou link por e-mail"}
               </span>
             </div>
           </div>
@@ -163,34 +183,34 @@ export function LoginClient({
 
         <section className="grid flex-1 items-center gap-6 pb-5 lg:grid-cols-[1fr_29rem]">
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-md border border-line/70 bg-graphite/80 px-3 py-1.5 text-xs font-bold uppercase text-paper/70 shadow-tool backdrop-blur">
+            <div className="inline-flex items-center gap-2 rounded-md border border-line/70 bg-graphite/90 px-3 py-1.5 text-xs font-bold text-paper/70">
               {isRegistrationFlow ? (
                 <LockKeyhole className="h-4 w-4 text-acid" aria-hidden="true" />
               ) : (
                 <UserCheck className="h-4 w-4 text-acid" aria-hidden="true" />
               )}
-              {isRegistrationFlow ? "Cadastro com Google" : "Acesso com Google"}
+              {isRegistrationFlow ? "Conta protegida" : "Acesso seguro"}
             </div>
 
-            <h1 className="mt-5 max-w-4xl font-display text-5xl font-semibold leading-none text-paper md:text-6xl">
+            <h1 className="mt-5 max-w-4xl text-balance font-display text-4xl font-semibold leading-none text-paper md:text-5xl">
               {isRegistrationFlow ? "Crie seu acesso." : "Acesse sua conta."}
               <br />
-              Continue sua <span className="accent-text">análise.</span>
+              Continue sua <span className="text-lavender">análise.</span>
             </h1>
 
-            <p className="mt-5 max-w-2xl text-sm leading-6 text-paper/65">
+            <p className="mt-5 max-w-2xl text-sm leading-6 text-paper/70">
               {isRegistrationFlow
-                ? "Use Google para cadastrar sua conta rapidamente ou receba um magic link para preservar sua quota e continuar sem senha."
-                : "Entre com Google ou receba um magic link para manter sua quota e continuar suas análises sem senha."}
+                ? "Use Google para criar sua conta rapidamente ou receba um link por e-mail para preservar sua quota e continuar sem senha."
+                : "Entre com Google ou receba um link por e-mail para manter sua quota e continuar suas análises sem senha."}
             </p>
 
             <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
               {markers.map((marker) => (
                 <div
                   key={marker.label}
-                  className="rounded-md border border-line/70 bg-graphite/80 p-4 shadow-tool backdrop-blur"
+                  className="rounded-md border border-line/70 bg-graphite/90 p-4"
                 >
-                  <p className="text-xs font-semibold uppercase text-paper/45">{marker.label}</p>
+                  <p className="text-xs font-semibold text-paper/60">{marker.label}</p>
                   <p className="mt-2 font-display text-2xl font-semibold text-copper">
                     {marker.value}
                   </p>
@@ -201,25 +221,37 @@ export function LoginClient({
 
           <section
             aria-labelledby="login-title"
-            className="rounded-md border border-line/75 bg-graphite/90 p-5 shadow-panel backdrop-blur sm:p-6"
+            className="rounded-md border border-line/75 bg-graphite/95 p-5 sm:p-6"
           >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase text-acid">
-                  {isRegistrationFlow ? "Identificação" : "Acesso sem senha"}
+                <p className="text-xs font-semibold text-acid">
+                  {isRegistrationFlow ? "Identificação segura" : "Acesso sem senha"}
                 </p>
                 <h2 id="login-title" className="mt-1 font-display text-3xl font-semibold">
-                  {isRegistrationFlow ? "Receber magic link" : "Entrar no Parserly"}
+                  {isRegistrationFlow ? "Criar acesso" : "Entrar no Parserly"}
                 </h2>
               </div>
               <ShieldCheck className="h-6 w-6 text-teal" aria-hidden="true" />
             </div>
 
+            {initialNotice ? (
+              <div
+                className="mb-5 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper"
+                role="status"
+              >
+                <div className="flex items-start gap-3">
+                  <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
+                  <p className="leading-6 text-paper/75">{initialNotice}</p>
+                </div>
+              </div>
+            ) : null}
+
             {isRegistrationFlow ? (
               <div className="mb-5 rounded-md border border-line/70 bg-night/85 p-4">
                 <label
                   htmlFor="privacy-agreement"
-                  className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-paper/75"
+                  className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-paper/80"
                 >
                   <input
                     id="privacy-agreement"
@@ -233,6 +265,7 @@ export function LoginClient({
                     Li e concordo com os termos da{" "}
                     <a
                       href="/privacidade"
+                      onClick={(event) => event.stopPropagation()}
                       className="focus-ring rounded-sm font-semibold text-acid underline decoration-acid/50 underline-offset-4"
                     >
                       Política de Privacidade
@@ -240,8 +273,8 @@ export function LoginClient({
                     do Parserly.
                   </span>
                 </label>
-                <p id="privacy-agreement-help" className="mt-2 pl-7 text-xs leading-5 text-paper/45">
-                  O aceite é obrigatório para criar uma conta com Google ou magic link.
+                <p id="privacy-agreement-help" className="mt-2 pl-7 text-xs leading-5 text-paper/60">
+                  O aceite é obrigatório para criar uma conta com Google ou link por e-mail.
                 </p>
                 {privacyError ? (
                   <p
@@ -259,10 +292,10 @@ export function LoginClient({
               onClick={handleGoogleClick}
               aria-disabled={isRegistrationActionDisabled}
               aria-describedby={isRegistrationFlow ? "privacy-agreement-help" : undefined}
-              className={`focus-ring mb-5 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-md border border-line/80 bg-paper px-5 py-3 text-sm font-bold text-ink shadow-tool transition hover:border-acid/60 hover:bg-white ${
+              className={`focus-ring mb-5 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-md border border-paper bg-paper px-5 py-3 text-sm font-bold text-ink transition hover:bg-white ${
                 isRegistrationActionDisabled
                   ? "cursor-not-allowed opacity-60"
-                  : "hover:-translate-y-0.5"
+                  : "motion-safe:hover:-translate-y-0.5"
               }`}
             >
               <svg
@@ -309,14 +342,14 @@ export function LoginClient({
                     inputMode="email"
                     autoComplete="email"
                     value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    onChange={(event) => handleEmailChange(event.target.value)}
                     disabled={isSubmitting}
-                    className="focus-ring min-h-12 w-full rounded-md border border-line/80 bg-night py-3 pl-11 pr-4 text-sm text-paper placeholder:text-paper/30 transition hover:border-acid/45 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="focus-ring min-h-12 w-full rounded-md border border-line/80 bg-night py-3 pl-11 pr-4 text-sm text-paper placeholder:text-paper/60 transition hover:border-acid/45 disabled:cursor-not-allowed disabled:opacity-70"
                     placeholder="voce@empresa.com"
                     aria-describedby={emailDescriptionId}
                   />
                 </div>
-                <p id="email-help" className="mt-2 text-xs leading-5 text-paper/45">
+                <p id="email-help" className="mt-2 text-xs leading-5 text-paper/60">
                   {isRegistrationFlow
                     ? "Se o e-mail já tiver acesso, ele será usado para recuperar sua sessão."
                     : "Se for seu primeiro acesso, o Parserly cria sua conta ao verificar o link."}
@@ -326,10 +359,13 @@ export function LoginClient({
               <button
                 type="submit"
                 disabled={isSubmitting || isRegistrationActionDisabled}
-                className="focus-ring inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md bg-acid px-5 py-3 text-sm font-bold text-ink shadow-acid transition hover:-translate-y-0.5 hover:bg-mint disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-70"
+                className={submitButtonClassName}
               >
                 {isSubmitting ? (
-                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+                  <Loader2
+                    className="h-5 w-5 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
                 ) : (
                   <ArrowRight className="h-5 w-5" aria-hidden="true" />
                 )}
@@ -337,21 +373,16 @@ export function LoginClient({
                   ? "Enviando link..."
                   : isRegistrationFlow
                     ? "Enviar link de acesso"
-                    : "Receber link de login"}
+                    : "Receber link por e-mail"}
               </button>
             </form>
 
-            {initialNotice ? (
-              <div className="mt-5 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
-                <div className="flex items-start gap-3">
-                  <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
-                  <p className="leading-6 text-paper/75">{initialNotice}</p>
-                </div>
-              </div>
-            ) : null}
-
             {phase === "sent" ? (
-              <div className="mt-5 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
+              <div
+                className="mt-5 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper"
+                role="status"
+                aria-live="polite"
+              >
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
                   <div>
@@ -369,11 +400,11 @@ export function LoginClient({
             {magicLink ? (
               <div className="mt-4 rounded-md border border-line/70 bg-night p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase text-paper/50">Link local</p>
+                  <p className="text-xs font-semibold text-paper/60">Link local</p>
                   <button
                     type="button"
                     onClick={handleCopyMagicLink}
-                    className="focus-ring inline-flex min-h-9 items-center gap-2 rounded-md border border-line/70 bg-graphite px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/45 hover:bg-fog"
+                    className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-graphite px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/45 hover:bg-fog"
                   >
                     {copyState === "copied" ? (
                       <CheckCircle2 className="h-4 w-4 text-acid" aria-hidden="true" />
@@ -396,13 +427,14 @@ export function LoginClient({
               <div
                 id="login-error"
                 className="mt-5 flex items-start gap-3 rounded-md border border-coral/35 bg-coral/10 px-4 py-3 text-sm text-paper"
+                role="alert"
               >
                 <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral" aria-hidden="true" />
                 <p>{error}</p>
               </div>
             ) : null}
 
-            <div className="mt-6 flex items-start gap-3 border-t border-line/65 pt-5 text-sm text-paper/60">
+            <div className="mt-6 flex items-start gap-3 border-t border-line/65 pt-5 text-sm text-paper/65">
               <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-copper" aria-hidden="true" />
               <p>Solicitações são limitadas por e-mail para proteger o acesso.</p>
             </div>
