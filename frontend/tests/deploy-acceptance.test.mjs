@@ -363,6 +363,13 @@ test("login page is framed as Google-first passwordless access", async () => {
   assert.match(loginClient, /label: "Alternativa", value: "magic link"/);
   assert.match(loginClient, /Se for seu primeiro acesso, o Parserly cria sua conta ao verificar o link/);
   assert.match(loginClient, /Cadastro com Google ou magic link/);
+  assert.match(loginClient, /const \[hasAcceptedPrivacy, setHasAcceptedPrivacy\] = useState\(false\)/);
+  assert.match(loginClient, /id="privacy-agreement"/);
+  assert.match(loginClient, /Li e concordo com os termos da/);
+  assert.match(loginClient, /href="\/privacidade"/);
+  assert.match(loginClient, /isRegistrationActionDisabled = isRegistrationFlow && !hasAcceptedPrivacy/);
+  assert.match(loginClient, /aria-disabled=\{isRegistrationActionDisabled\}/);
+  assert.match(loginClient, /disabled=\{isSubmitting \|\| isRegistrationActionDisabled\}/);
   assert.doesNotMatch(loginClient, /error\.status === 404/);
   assert.doesNotMatch(loginClient, /contas já cadastradas/);
   assert.match(loginPage, /Entre ou crie acesso no Parserly com Google ou magic link/);

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { type FormEvent, type MouseEvent, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowRight,
@@ -48,6 +48,8 @@ export function LoginClient({
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [magicLink, setMagicLink] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+  const [hasAcceptedPrivacy, setHasAcceptedPrivacy] = useState(false);
+  const [privacyError, setPrivacyError] = useState<string | null>(null);
 
   const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
   const isSubmitting = phase === "submitting";
@@ -55,9 +57,17 @@ export function LoginClient({
   const isRegistrationFlow = intent === "registration";
   const markers = isRegistrationFlow ? REGISTRATION_MARKERS : LOGIN_MARKERS;
   const googleButtonLabel = isRegistrationFlow ? "Cadastrar com Google" : "Continuar com Google";
+  const isRegistrationActionDisabled = isRegistrationFlow && !hasAcceptedPrivacy;
+  const privacyDescriptionId = privacyError
+    ? "privacy-agreement-help privacy-agreement-error"
+    : "privacy-agreement-help";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!ensurePrivacyAccepted()) {
+      return;
+    }
 
     if (!isValidEmail(normalizedEmail)) {
       setPhase("error");
@@ -79,6 +89,29 @@ export function LoginClient({
       setPhase("error");
       setError(resolveLoginError(requestError));
     }
+  }
+
+  function handleGoogleClick(event: MouseEvent<HTMLAnchorElement>) {
+    if (!ensurePrivacyAccepted()) {
+      event.preventDefault();
+    }
+  }
+
+  function handlePrivacyChange(accepted: boolean) {
+    setHasAcceptedPrivacy(accepted);
+
+    if (accepted) {
+      setPrivacyError(null);
+    }
+  }
+
+  function ensurePrivacyAccepted() {
+    if (!isRegistrationFlow || hasAcceptedPrivacy) {
+      return true;
+    }
+
+    setPrivacyError("Para criar sua conta, aceite a Política de Privacidade.");
+    return false;
   }
 
   async function handleCopyMagicLink() {
@@ -182,9 +215,55 @@ export function LoginClient({
               <ShieldCheck className="h-6 w-6 text-teal" aria-hidden="true" />
             </div>
 
+            {isRegistrationFlow ? (
+              <div className="mb-5 rounded-md border border-line/70 bg-night/85 p-4">
+                <label
+                  htmlFor="privacy-agreement"
+                  className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-paper/75"
+                >
+                  <input
+                    id="privacy-agreement"
+                    type="checkbox"
+                    checked={hasAcceptedPrivacy}
+                    onChange={(event) => handlePrivacyChange(event.target.checked)}
+                    aria-describedby={privacyDescriptionId}
+                    className="focus-ring mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-line/80 bg-graphite accent-acid"
+                  />
+                  <span>
+                    Li e concordo com os termos da{" "}
+                    <a
+                      href="/privacidade"
+                      className="focus-ring rounded-sm font-semibold text-acid underline decoration-acid/50 underline-offset-4"
+                    >
+                      Política de Privacidade
+                    </a>{" "}
+                    do Parserly.
+                  </span>
+                </label>
+                <p id="privacy-agreement-help" className="mt-2 pl-7 text-xs leading-5 text-paper/45">
+                  O aceite é obrigatório para criar uma conta com Google ou magic link.
+                </p>
+                {privacyError ? (
+                  <p
+                    id="privacy-agreement-error"
+                    className="mt-2 pl-7 text-xs font-semibold leading-5 text-coral"
+                  >
+                    {privacyError}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             <a
               href={googleOAuthStartPath()}
-              className="focus-ring mb-5 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-md border border-line/80 bg-paper px-5 py-3 text-sm font-bold text-ink shadow-tool transition hover:-translate-y-0.5 hover:border-acid/60 hover:bg-white"
+              onClick={handleGoogleClick}
+              aria-disabled={isRegistrationActionDisabled}
+              aria-describedby={isRegistrationFlow ? "privacy-agreement-help" : undefined}
+              className={`focus-ring mb-5 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-md border border-line/80 bg-paper px-5 py-3 text-sm font-bold text-ink shadow-tool transition hover:border-acid/60 hover:bg-white ${
+                isRegistrationActionDisabled
+                  ? "cursor-not-allowed opacity-60"
+                  : "hover:-translate-y-0.5"
+              }`}
             >
               <svg
                 className="h-5 w-5 shrink-0"
@@ -246,7 +325,7 @@ export function LoginClient({
 
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isRegistrationActionDisabled}
                 className="focus-ring inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md bg-acid px-5 py-3 text-sm font-bold text-ink shadow-acid transition hover:-translate-y-0.5 hover:bg-mint disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-70"
               >
                 {isSubmitting ? (
