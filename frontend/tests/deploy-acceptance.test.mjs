@@ -319,7 +319,7 @@ test("dashboard resolves auth session before exposing guest navigation", async (
   assert.match(hook, /void resolveSession\(controller\.signal\)/);
 
   assert.match(dashboard, /isLoadingAuth \? \(/);
-  assert.match(dashboard, /Confirmando sessao/);
+  assert.match(dashboard, /Confirmando sessão/);
   assert.match(dashboard, /\) : isAuthenticated \? \(/);
   assert.match(dashboard, /permissions\.includes\(ALL_FEATURES_PERMISSION\)/);
   assert.match(dashboard, /\{accessLevel\}/);
@@ -357,12 +357,12 @@ test("login page is framed as Google-first passwordless access", async () => {
   const loginClient = await readSource("components/auth/login-client.tsx");
   const loginPage = await readSource("app/login/page.tsx");
 
-  assert.match(loginClient, /Login com Google ou magic link/);
-  assert.match(loginClient, /Acesso com Google/);
+  assert.match(loginClient, /Login com Google ou link por e-mail/);
+  assert.match(loginClient, /Continuar com Google/);
   assert.match(loginClient, /label: "Acesso", value: "Google"/);
-  assert.match(loginClient, /label: "Alternativa", value: "magic link"/);
+  assert.match(loginClient, /label: "Alternativa", value: "link por e-mail"/);
   assert.match(loginClient, /Se for seu primeiro acesso, o Parserly cria sua conta ao verificar o link/);
-  assert.match(loginClient, /Cadastro com Google ou magic link/);
+  assert.match(loginClient, /Cadastro com Google ou link por e-mail/);
   assert.match(loginClient, /const \[hasAcceptedPrivacy, setHasAcceptedPrivacy\] = useState\(false\)/);
   assert.match(loginClient, /id="privacy-agreement"/);
   assert.match(loginClient, /Li e concordo com os termos da/);
@@ -373,7 +373,9 @@ test("login page is framed as Google-first passwordless access", async () => {
   assert.doesNotMatch(loginClient, /error\.status === 404/);
   assert.doesNotMatch(loginClient, /contas já cadastradas/);
   assert.match(loginPage, /Entre ou crie acesso no Parserly com Google ou magic link/);
-  assert.match(loginPage, /const isRegistrationIntent = intentCode === "registration" \|\| reasonCode === "free-limit"/);
+  assert.match(loginPage, /const isFreeLimitReason = reasonCode === "free-limit"/);
+  assert.match(loginPage, /const isRegistrationIntent = intentCode === "registration" \|\| isFreeLimitReason/);
+  assert.match(loginPage, /const initialNotice =\s+isFreeLimitReason/);
   assert.match(loginPage, /intent=\{isRegistrationIntent \? "registration" : "login"\}/);
 });
 
