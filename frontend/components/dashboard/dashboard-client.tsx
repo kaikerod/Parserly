@@ -113,6 +113,13 @@ const NAVIGATION_DETAILS = [
   }
 ];
 
+const CONTROL_MOTION_CLASS =
+  "motion-safe:transition motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-px";
+const BUTTON_MOTION_CLASS =
+  "motion-safe:transition motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:enabled:hover:-translate-y-0.5 motion-safe:enabled:active:translate-y-px";
+const SURFACE_MOTION_CLASS =
+  "motion-safe:transition motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]";
+
 interface DashboardClientProps {
   isAuthenticated: boolean;
   paymentRequired?: boolean;
@@ -163,6 +170,7 @@ export function DashboardClient({
   const paymentActionLabel = hasPendingPixCharge ? "Reabrir QR Code PIX" : "Abrir pagamento PIX";
   const activeAnalysisLoadingStep = ANALYSIS_LOADING_STEPS[activeAnalysisLoadingStepIndex];
   const hasFullFeatureAccess = permissions.includes(ALL_FEATURES_PERMISSION);
+  const reportStageKey = isSubmitting ? "analysis-loading" : analysis ? `analysis-${analysis.id}` : "empty";
 
   useEffect(() => {
     selectedHistoryIdRef.current = selectedHistoryId;
@@ -467,11 +475,13 @@ export function DashboardClient({
                 key={item.label}
                 type="button"
                 onClick={() => setActiveNavigationDetail(item)}
-                className={`focus-ring rounded-md px-3 py-2 text-xs font-semibold transition ${
+                className={[
+                  "focus-ring rounded-md px-3 py-2 text-xs font-semibold transition",
+                  BUTTON_MOTION_CLASS,
                   activeNavigationDetail.label === item.label
                     ? "bg-paper text-ink"
                     : "text-paper/60 hover:bg-fog hover:text-paper"
-                }`}
+                ].join(" ")}
                 aria-pressed={activeNavigationDetail.label === item.label}
               >
                 {item.label}
@@ -482,7 +492,7 @@ export function DashboardClient({
           <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end">
             <a
               href="/privacidade"
-              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 font-semibold text-paper/75 transition hover:border-acid/50 hover:bg-fog"
+              className={`focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 font-semibold text-paper/75 transition hover:border-acid/50 hover:bg-fog ${CONTROL_MOTION_CLASS}`}
             >
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               Privacidade
@@ -512,7 +522,7 @@ export function DashboardClient({
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+                  className={`focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_MOTION_CLASS}`}
                 >
                   <LogOut className="h-4 w-4" aria-hidden="true" />
                   Sair
@@ -522,14 +532,14 @@ export function DashboardClient({
               <>
                 <a
                   href="/login"
-                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog"
+                  className={`focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog ${CONTROL_MOTION_CLASS}`}
                 >
                   <LogIn className="h-4 w-4" aria-hidden="true" />
                   Entrar
                 </a>
                 <a
                   href="/login?intent=registration"
-                  className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog"
+                  className={`focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog ${CONTROL_MOTION_CLASS}`}
                 >
                   <UserPlus className="h-4 w-4" aria-hidden="true" />
                   Cadastrar
@@ -540,7 +550,7 @@ export function DashboardClient({
         </nav>
 
         {authError ? (
-          <div className="flex items-start justify-between gap-3 rounded-md border border-amber/40 bg-amber/10 px-4 py-3 text-sm text-paper">
+          <div className="dashboard-state-panel flex items-start justify-between gap-3 rounded-md border border-amber/40 bg-amber/10 px-4 py-3 text-sm text-paper">
             <div className="flex min-w-0 items-start gap-3">
               <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber" aria-hidden="true" />
               <p>{authError}</p>
@@ -548,7 +558,7 @@ export function DashboardClient({
             <button
               type="button"
               onClick={() => void refreshSession()}
-              className="focus-ring inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/50 hover:bg-fog"
+              className={`focus-ring inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/50 hover:bg-fog ${BUTTON_MOTION_CLASS}`}
             >
               <RotateCw className="h-4 w-4" aria-hidden="true" />
               Tentar novamente
@@ -557,9 +567,10 @@ export function DashboardClient({
         ) : null}
 
         <section
-          className="hidden items-start gap-4 rounded-md border border-line/70 bg-graphite/90 p-4 md:flex"
+          key={activeNavigationDetail.label}
+          className="dashboard-state-panel hidden items-start gap-4 rounded-md border border-line/70 bg-graphite/90 p-4 md:flex"
         >
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-night text-acid">
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-night text-acid ${SURFACE_MOTION_CLASS}`}>
             <ActiveNavigationIcon className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0">
@@ -637,7 +648,7 @@ export function DashboardClient({
               ) : null}
 
               {error ? (
-                <div className="mt-5 flex items-start gap-3 rounded-md border border-coral/40 bg-coral/10 px-4 py-3 text-sm text-paper">
+                <div className="dashboard-state-panel mt-5 flex items-start gap-3 rounded-md border border-coral/40 bg-coral/10 px-4 py-3 text-sm text-paper">
                   <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-coral" aria-hidden="true" />
                   <div className="min-w-0">
                     <p>{error}</p>
@@ -649,7 +660,7 @@ export function DashboardClient({
               ) : null}
 
               {paymentNotice ? (
-                <div className="mt-5 flex items-start gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
+                <div className="dashboard-state-panel mt-5 flex items-start gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper">
                   <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-acid" aria-hidden="true" />
                   <div className="min-w-0">
                     <p>{paymentNotice}</p>
@@ -669,7 +680,7 @@ export function DashboardClient({
                     }
                   }}
                   disabled={isSubmitting || !selectedFile}
-                  className="focus-ring mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-line/80 bg-night px-4 py-2 text-sm font-semibold text-paper transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+                  className={`focus-ring mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-line/80 bg-night px-4 py-2 text-sm font-semibold text-paper transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_MOTION_CLASS}`}
                 >
                   <RotateCw className="h-4 w-4" aria-hidden="true" />
                   Reanalisar arquivo selecionado
@@ -699,16 +710,18 @@ export function DashboardClient({
             className="min-w-0 rounded-md border border-line/75 bg-graphite/90 p-5"
             aria-busy={isSubmitting}
           >
-            {isSubmitting ? (
-              <AnalysisReportLoadingState
-                activeStepIndex={activeAnalysisLoadingStepIndex}
-                steps={ANALYSIS_LOADING_STEPS}
-              />
-            ) : analysis ? (
-              <AnalysisReport analysis={analysis} />
-            ) : (
-              <EmptyReportState />
-            )}
+            <div key={reportStageKey} className="dashboard-report-stage">
+              {isSubmitting ? (
+                <AnalysisReportLoadingState
+                  activeStepIndex={activeAnalysisLoadingStepIndex}
+                  steps={ANALYSIS_LOADING_STEPS}
+                />
+              ) : analysis ? (
+                <AnalysisReport analysis={analysis} />
+              ) : (
+                <EmptyReportState />
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -734,7 +747,7 @@ function AnalysisLoadingBanner({
 }) {
   return (
     <div
-      className="mt-5 flex items-start gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper"
+      className="dashboard-state-panel mt-5 flex items-start gap-3 rounded-md border border-acid/25 bg-acid/10 px-4 py-3 text-sm text-paper"
       role="status"
       aria-live="polite"
     >
@@ -746,7 +759,9 @@ function AnalysisLoadingBanner({
         {afterPayment ? (
           <p className="text-xs font-bold text-acid">Pagamento confirmado</p>
         ) : null}
-        <p className="font-semibold">{activeStep}</p>
+        <p key={activeStep} className="dashboard-step-label font-semibold">
+          {activeStep}
+        </p>
         {afterPayment ? (
           <p className="mt-1 text-xs leading-5 text-paper/60">Análise iniciada automaticamente.</p>
         ) : null}
@@ -760,7 +775,7 @@ function PaymentActionButton({ label, onClick }: { label: string; onClick: () =>
     <button
       type="button"
       onClick={onClick}
-      className="focus-ring mt-3 inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/50 hover:bg-fog"
+      className={`focus-ring mt-3 inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-xs font-semibold text-paper transition hover:border-acid/50 hover:bg-fog ${BUTTON_MOTION_CLASS}`}
     >
       <QrCode className="h-4 w-4 text-acid" aria-hidden="true" />
       {label}
@@ -808,7 +823,7 @@ function AnalysisHistoryPanel({
   return (
     <section
       aria-labelledby="history-title"
-      className="rounded-md border border-line/75 bg-graphite/95 p-5"
+      className="dashboard-state-panel rounded-md border border-line/75 bg-graphite/95 p-5"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -825,7 +840,7 @@ function AnalysisHistoryPanel({
                 type="button"
                 onClick={() => onPageChange(currentPage - 1)}
                 disabled={!canGoPrevious}
-                className="focus-ring inline-flex h-10 items-center justify-center border-r border-line/70 px-3 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+                className={`focus-ring inline-flex h-10 items-center justify-center border-r border-line/70 px-3 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_MOTION_CLASS}`}
                 aria-label="Página anterior"
               >
                 <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -837,7 +852,7 @@ function AnalysisHistoryPanel({
                 type="button"
                 onClick={() => onPageChange(currentPage + 1)}
                 disabled={!canGoNext}
-                className="focus-ring inline-flex h-10 items-center justify-center border-l border-line/70 px-3 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+                className={`focus-ring inline-flex h-10 items-center justify-center border-l border-line/70 px-3 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_MOTION_CLASS}`}
                 aria-label="Próxima página"
               >
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -848,7 +863,7 @@ function AnalysisHistoryPanel({
             type="button"
             onClick={onRefresh}
             disabled={isAuthLoading || isLoading}
-            className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/70 transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60"
+            className={`focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/70 transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_MOTION_CLASS}`}
             aria-label="Atualizar histórico"
           >
             {isAuthLoading || isLoading ? (
@@ -864,7 +879,7 @@ function AnalysisHistoryPanel({
       </div>
 
       {error ? (
-        <div className="mt-4 flex items-start gap-3 rounded-md border border-coral/40 bg-coral/10 px-3 py-3 text-sm text-paper">
+        <div className="dashboard-state-panel mt-4 flex items-start gap-3 rounded-md border border-coral/40 bg-coral/10 px-3 py-3 text-sm text-paper">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-coral" aria-hidden="true" />
           <p>{error}</p>
         </div>
@@ -886,7 +901,7 @@ function AnalysisHistoryPanel({
           </div>
         ) : null}
 
-        {!isAuthLoading && items.map((item) => {
+        {!isAuthLoading && items.map((item, index) => {
           const isSelected = selectedId === item.id;
           const isOpening = isSelected && isDetailLoading;
 
@@ -897,10 +912,12 @@ function AnalysisHistoryPanel({
               onClick={() => onSelect(item)}
               className={[
                 "focus-ring grid min-h-20 w-full grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md border px-3 py-3 text-left transition",
+                "dashboard-list-row motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isSelected
-                  ? "border-acid/50 bg-acid/10"
-                  : "border-line/70 bg-night/70 hover:border-acid/40 hover:bg-fog"
+                  ? "border-acid/50 bg-acid/10 motion-safe:-translate-y-0.5"
+                  : "border-line/70 bg-night/70 hover:border-acid/40 hover:bg-fog motion-safe:hover:-translate-y-0.5"
               ].join(" ")}
+              style={{ animationDelay: `${Math.min(index, 5) * 35}ms` }}
               aria-pressed={isSelected}
             >
               <span className="min-w-0">
@@ -938,7 +955,7 @@ function AnalysisHistoryPanel({
               type="button"
               onClick={() => onPageChange(currentPage - 1)}
               disabled={!canGoPrevious}
-              className="focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line/70 bg-night px-3 font-semibold text-paper/75 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+              className={`focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line/70 bg-night px-3 font-semibold text-paper/75 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_MOTION_CLASS}`}
               aria-label="Página anterior"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -948,7 +965,7 @@ function AnalysisHistoryPanel({
               type="button"
               onClick={() => onPageChange(currentPage + 1)}
               disabled={!canGoNext}
-              className="focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line/70 bg-night px-3 font-semibold text-paper/75 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50"
+              className={`focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line/70 bg-night px-3 font-semibold text-paper/75 transition hover:bg-fog disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_MOTION_CLASS}`}
               aria-label="Próxima página"
             >
               Próxima
@@ -989,6 +1006,7 @@ function AnalysisReportLoadingState({
   steps: readonly string[];
 }) {
   const activeStep = steps[activeStepIndex];
+  const progressScale = (activeStepIndex + 1) / steps.length;
 
   return (
     <section
@@ -1005,13 +1023,28 @@ function AnalysisReportLoadingState({
 
       <div className="mx-auto mt-5 max-w-xl text-center">
         <p className="text-xs font-bold text-copper">Análise em andamento</p>
-        <h2 className="mt-2 font-display text-3xl font-semibold text-paper">{activeStep}</h2>
+        <h2
+          key={activeStep}
+          className="dashboard-step-label mt-2 font-display text-3xl font-semibold text-paper"
+        >
+          {activeStep}
+        </h2>
         <p className="mt-3 text-sm leading-6 text-paper/60">
           Estamos preparando a leitura ATS e as recomendações para o arquivo enviado.
         </p>
       </div>
 
-      <ol className="mx-auto mt-8 grid w-full max-w-2xl gap-3">
+      <div
+        className="mx-auto mt-8 h-1.5 w-full max-w-2xl overflow-hidden rounded-full bg-line/70"
+        aria-hidden="true"
+      >
+        <div
+          className="h-full origin-left rounded-full bg-acid motion-safe:transition-transform motion-safe:duration-500 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{ transform: `scaleX(${progressScale})` }}
+        />
+      </div>
+
+      <ol className="mx-auto mt-4 grid w-full max-w-2xl gap-3">
         {steps.map((step, index) => {
           const isActive = index === activeStepIndex;
           const isComplete = index < activeStepIndex;
@@ -1020,9 +1053,9 @@ function AnalysisReportLoadingState({
             <li
               key={step}
               className={[
-                "flex min-h-14 items-center gap-3 rounded-md border px-4 py-3 text-left transition",
+                "flex min-h-14 items-center gap-3 rounded-md border px-4 py-3 text-left transition motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isActive
-                  ? "border-acid/50 bg-acid/10 text-paper"
+                  ? "border-acid/50 bg-acid/10 text-paper motion-safe:-translate-y-0.5"
                   : isComplete
                     ? "border-teal/40 bg-teal/10 text-paper/80"
                     : "border-line/70 bg-graphite/80 text-paper/60"
@@ -1031,9 +1064,9 @@ function AnalysisReportLoadingState({
             >
               <span
                 className={[
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-xs font-bold",
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-xs font-bold transition motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
                   isActive
-                    ? "border-acid bg-acid text-ink"
+                    ? "border-acid bg-acid text-ink motion-safe:scale-105"
                     : isComplete
                       ? "border-teal bg-teal text-ink"
                       : "border-line/80 bg-night text-paper/60"

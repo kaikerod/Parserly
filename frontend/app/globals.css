@@ -72,3 +72,80 @@ button {
     linear-gradient(0deg, rgba(244, 241, 234, 0.045) 1px, transparent 1px);
   background-size: 36px 36px;
 }
+
+.dashboard-state-panel {
+  animation: dashboard-state-panel-in 220ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.dashboard-report-stage {
+  animation: dashboard-report-stage-in 240ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.dashboard-list-row {
+  animation: dashboard-list-row-in 180ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.dashboard-step-label {
+  animation: dashboard-step-label-in 180ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes dashboard-state-panel-in {
+  from {
+    opacity: 0.88;
+    filter: blur(2px);
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes dashboard-report-stage-in {
+  from {
+    opacity: 0.9;
+    filter: blur(2px);
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes dashboard-list-row-in {
+  from {
+    opacity: 0.9;
+    transform: translateX(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes dashboard-step-label-in {
+  from {
+    opacity: 0.78;
+    transform: translateY(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-state-panel,
+  .dashboard-report-stage,
+  .dashboard-list-row,
+  .dashboard-step-label {
+    animation: none !important;
+  }
+}
