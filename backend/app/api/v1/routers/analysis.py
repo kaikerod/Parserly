@@ -180,6 +180,30 @@ async def get_analysis(
     )
 
 
+@router.delete("/{analysis_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_analysis(
+    analysis_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db_session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> Response:
+    result = await db_session.execute(
+        select(Analysis).where(
+            Analysis.id == analysis_id,
+            Analysis.user_id == current_user.id,
+        )
+    )
+    analysis = result.scalar_one_or_none()
+    if analysis is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis was not found.",
+        )
+
+    await db_session.delete(analysis)
+    await db_session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("", response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
 async def create_analysis(
     request: Request,
