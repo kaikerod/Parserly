@@ -270,8 +270,12 @@ test("authenticated dashboard loads and opens persistent analysis history", asyn
 
   assert.match(api, /export async function listAnalyses/);
   assert.match(api, /export async function getAnalysisById/);
+  assert.match(api, /export async function deleteAnalysisById/);
   assert.match(api, /apiPath\(`\/analysis\?\$\{params\.toString\(\)\}`\)/);
   assert.match(api, /apiPath\(`\/analysis\/\$\{encodeURIComponent\(id\)\}`\)/);
+  assert.match(api, /method: "DELETE"/);
+  assert.match(api, /await parseEmptyResponse\(response, "NÃ£o foi possÃ­vel excluir a anÃ¡lise salva\."\)/);
+  assert.match(api, /async function parseEmptyResponse\(response: Response, fallbackMessage: string\): Promise<void>/);
 
   assert.match(dashboard, /const HISTORY_PAGE_SIZE = 4;/);
   assert.match(
@@ -336,6 +340,36 @@ test("dashboard history fetches only after confirmed auth and ignores stale requ
   assert.match(dashboard, /getAnalysisById\(item\.id, \{ signal: controller\.signal \}\)/);
   assert.match(dashboard, /isAuthLoading=\{isLoadingAuth\}/);
   assert.match(dashboard, /!isAuthLoading && !isLoading && items\.length === 0/);
+});
+
+test("dashboard deletes saved analyses with confirmation and local history repair", async () => {
+  const dashboard = await readSource("components/dashboard/dashboard-client.tsx");
+
+  const confirmIndex = dashboard.indexOf("const confirmed = window.confirm(");
+  const deleteIndex = dashboard.indexOf("await deleteAnalysisById(item.id)");
+  const removeIndex = dashboard.indexOf("setAnalysisHistory((currentItems)");
+
+  assert.ok(confirmIndex > -1, "delete confirmation is required");
+  assert.ok(deleteIndex > confirmIndex, "delete request runs after confirmation");
+  assert.ok(removeIndex > deleteIndex, "history item is removed only after API success");
+  assert.match(dashboard, /deleteAnalysisById/);
+  assert.match(
+    dashboard,
+    /const \[deletingAnalysisIds, setDeletingAnalysisIds\] = useState<Set<string>>\(\(\) => new Set\(\)\)/
+  );
+  assert.match(dashboard, /deletingIds=\{deletingAnalysisIds\}/);
+  assert.match(dashboard, /onDelete=\{\(item\) => void handleDeleteHistoryItem\(item\)\}/);
+  assert.match(dashboard, /const isDeleting = deletingIds\.has\(item\.id\)/);
+  assert.match(dashboard, /aria-label=\{[\s\S]*Excluir analise \$\{item\.filename\}/);
+  assert.match(dashboard, /setHistoryTotal\(\(currentTotal\) => Math\.max\(0, currentTotal - 1\)\)/);
+  assert.match(dashboard, /setSelectedHistoryId\(null\)/);
+  assert.match(dashboard, /setAnalysis\(null\)/);
+  assert.match(
+    dashboard,
+    /analysisHistory\.length <= 1 && historyPage > 0 \? historyPage - 1 : historyPage/
+  );
+  assert.match(dashboard, /void loadAnalysisHistory\(nextPage\)/);
+  assert.match(dashboard, /setHistoryError\([\s\S]*Nao foi possivel excluir a analise salva\./);
 });
 
 test("dashboard logout clears user-specific history and selected report state", async () => {

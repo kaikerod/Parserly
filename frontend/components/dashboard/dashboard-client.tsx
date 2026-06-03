@@ -19,11 +19,13 @@ import {
   RotateCw,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UsersRound,
   UserPlus
 } from "lucide-react";
 import {
   ApiError,
+  deleteAnalysisById,
   getAnalysisById,
   getAnalysisQuota,
   listAnalyses,
@@ -154,6 +156,7 @@ export function DashboardClient({
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(0);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [deletingAnalysisIds, setDeletingAnalysisIds] = useState<Set<string>>(() => new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeAnalysisLoadingStepIndex, setActiveAnalysisLoadingStepIndex] = useState(0);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -232,6 +235,7 @@ export function DashboardClient({
     setHistoryTotal(0);
     setHistoryPage(0);
     setHistoryError(null);
+    setDeletingAnalysisIds(new Set());
     setSelectedHistoryId(null);
     setIsHistoryDetailLoading(false);
     setIsLoadingData(false);
@@ -422,6 +426,86 @@ export function DashboardClient({
       }
     }
   }, [clearUserSpecificState, isAuthenticated, isLoadingAuth, refreshSession]);
+
+  const handleDeleteHistoryItem = useCallback(async (item: AnalysisHistoryItem) => {
+    if (!isAuthenticated || isLoadingAuth || deletingAnalysisIds.has(item.id)) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Excluir a analise "${item.filename}"? Esta acao nao pode ser desfeita.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingAnalysisIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      nextIds.add(item.id);
+      return nextIds;
+    });
+    setHistoryError(null);
+    setError(null);
+    setPaymentNotice(null);
+
+    try {
+      await deleteAnalysisById(item.id);
+
+      setAnalysisHistory((currentItems) =>
+        currentItems.filter((historyItem) => historyItem.id !== item.id)
+      );
+      setHistoryTotal((currentTotal) => Math.max(0, currentTotal - 1));
+
+      if (selectedHistoryIdRef.current === item.id) {
+        historyDetailAbortRef.current?.abort();
+        historyDetailAbortRef.current = null;
+        selectedHistoryIdRef.current = null;
+        setSelectedHistoryId(null);
+        setAnalysis(null);
+        setSelectedFile(null);
+        setPendingFile(null);
+        setIsHistoryDetailLoading(false);
+      }
+
+      const nextTotal = Math.max(0, historyTotal - 1);
+      const nextPage =
+        analysisHistory.length <= 1 && historyPage > 0 ? historyPage - 1 : historyPage;
+
+      if (nextPage !== historyPage) {
+        setHistoryPage(nextPage);
+      } else if (nextTotal > 0) {
+        void loadAnalysisHistory(nextPage);
+      }
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        clearUserSpecificState();
+        await refreshSession();
+        return;
+      }
+
+      setHistoryError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Nao foi possivel excluir a analise salva."
+      );
+    } finally {
+      setDeletingAnalysisIds((currentIds) => {
+        const nextIds = new Set(currentIds);
+        nextIds.delete(item.id);
+        return nextIds;
+      });
+    }
+  }, [
+    analysisHistory.length,
+    clearUserSpecificState,
+    deletingAnalysisIds,
+    historyPage,
+    historyTotal,
+    isAuthenticated,
+    isLoadingAuth,
+    loadAnalysisHistory,
+    refreshSession
+  ]);
 
   const handleLogout = useCallback(async () => {
     clearUserSpecificState();
@@ -711,10 +795,12 @@ export function DashboardClient({
                 isLoading={isLoadingData}
                 isDetailLoading={isHistoryDetailLoading}
                 selectedId={selectedHistoryId}
+                deletingIds={deletingAnalysisIds}
                 error={historyError}
                 onRefresh={() => void loadAnalysisHistory(historyPage)}
                 onPageChange={setHistoryPage}
                 onSelect={(item) => void handleSelectHistoryItem(item)}
+                onDelete={(item) => void handleDeleteHistoryItem(item)}
               />
             ) : null}
           </div>
@@ -899,10 +985,12 @@ interface AnalysisHistoryPanelProps {
   isLoading: boolean;
   isDetailLoading: boolean;
   selectedId: string | null;
+  deletingIds: Set<string>;
   error: string | null;
   onRefresh: () => void;
   onPageChange: (page: number) => void;
   onSelect: (item: AnalysisHistoryItem) => void;
+  onDelete: (item: AnalysisHistoryItem) => void;
 }
 
 function AnalysisHistoryPanel({
@@ -914,15 +1002,19 @@ function AnalysisHistoryPanel({
   isLoading,
   isDetailLoading,
   selectedId,
+  deletingIds,
   error,
   onRefresh,
   onPageChange,
-  onSelect
+  onSelect,
+  onDelete
 }: AnalysisHistoryPanelProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hasMultiplePages = totalPages > 1;
-  const canGoPrevious = currentPage > 0 && !isAuthLoading && !isLoading;
-  const canGoNext = currentPage < totalPages - 1 && !isAuthLoading && !isLoading;
+  const hasPendingDeletion = deletingIds.size > 0;
+  const canGoPrevious = currentPage > 0 && !isAuthLoading && !isLoading && !hasPendingDeletion;
+  const canGoNext =
+    currentPage < totalPages - 1 && !isAuthLoading && !isLoading && !hasPendingDeletion;
   const hasItems = items.length > 0;
   const startItem = hasItems ? currentPage * pageSize + 1 : 0;
   const endItem = hasItems ? currentPage * pageSize + items.length : 0;
@@ -969,11 +1061,11 @@ function AnalysisHistoryPanel({
           <button
             type="button"
             onClick={onRefresh}
-            disabled={isAuthLoading || isLoading}
+            disabled={isAuthLoading || isLoading || hasPendingDeletion}
             className={`focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/70 transition hover:border-acid/50 hover:bg-fog disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_MOTION_CLASS}`}
             aria-label="Atualizar histórico"
           >
-            {isAuthLoading || isLoading ? (
+            {isAuthLoading || isLoading || hasPendingDeletion ? (
               <Loader2
                 className="h-4 w-4 animate-spin motion-reduce:animate-none"
                 aria-hidden="true"
@@ -1011,43 +1103,70 @@ function AnalysisHistoryPanel({
         {!isAuthLoading && items.map((item, index) => {
           const isSelected = selectedId === item.id;
           const isOpening = isSelected && isDetailLoading;
+          const isDeleting = deletingIds.has(item.id);
 
           return (
-            <button
+            <div
               key={item.id}
-              type="button"
-              onClick={() => onSelect(item)}
               className={[
-                "focus-ring grid min-h-20 w-full grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md border px-3 py-3 text-left transition",
+                "flex min-h-20 w-full items-center gap-2 rounded-md border p-2 transition",
                 "dashboard-list-row motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isSelected
                   ? "border-acid/50 bg-acid/10 motion-safe:-translate-y-0.5"
                   : "border-line/70 bg-night/70 hover:border-acid/40 hover:bg-fog motion-safe:hover:-translate-y-0.5"
               ].join(" ")}
               style={{ animationDelay: `${Math.min(index, 5) * 35}ms` }}
-              aria-pressed={isSelected}
             >
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold text-paper">
-                  {item.filename}
+              <button
+                type="button"
+                onClick={() => onSelect(item)}
+                disabled={hasPendingDeletion}
+                className={`focus-ring grid min-h-16 min-w-0 flex-1 grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md px-1 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-60 sm:px-2 ${BUTTON_MOTION_CLASS}`}
+                aria-pressed={isSelected}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-paper">
+                    {item.filename}
+                  </span>
+                  <span className="mt-2 flex items-center gap-1.5 text-xs text-paper/60">
+                    <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {formatAnalysisDate(item.created_at)}
+                  </span>
                 </span>
-                <span className="mt-2 flex items-center gap-1.5 text-xs text-paper/60">
-                  <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  {formatAnalysisDate(item.created_at)}
+                <span className="rounded-md border border-line/70 bg-graphite px-2.5 py-1 text-sm font-bold text-acid">
+                  {item.score}
                 </span>
-              </span>
-              <span className="rounded-md border border-line/70 bg-graphite px-2.5 py-1 text-sm font-bold text-acid">
-                {item.score}
-              </span>
-              {isOpening ? (
-                <Loader2
-                  className="h-4 w-4 animate-spin text-acid motion-reduce:animate-none"
-                  aria-hidden="true"
-                />
-              ) : (
-                <ChevronRight className="h-4 w-4 text-paper/40" aria-hidden="true" />
-              )}
-            </button>
+                {isOpening ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin text-acid motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-paper/40" aria-hidden="true" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(item)}
+                disabled={hasPendingDeletion}
+                className={`focus-ring inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-line/70 bg-night text-paper/50 transition hover:border-coral/50 hover:bg-coral/10 hover:text-coral disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_MOTION_CLASS}`}
+                aria-label={
+                  isDeleting
+                    ? `Excluindo analise ${item.filename}`
+                    : `Excluir analise ${item.filename}`
+                }
+                title="Excluir analise"
+              >
+                {isDeleting ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin text-coral motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
           );
         })}
       </div>

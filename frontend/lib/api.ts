@@ -161,6 +161,23 @@ export async function getAnalysisById(
   );
 }
 
+export async function deleteAnalysisById(
+  id: string,
+  options: RequestOptions = {}
+): Promise<void> {
+  const response = await fetch(apiPath(`/analysis/${encodeURIComponent(id)}`), {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json"
+    },
+    credentials: "include",
+    cache: "no-store",
+    signal: options.signal
+  });
+
+  await parseEmptyResponse(response, "NÃ£o foi possÃ­vel excluir a anÃ¡lise salva.");
+}
+
 export async function getAnalysisQuota(options: RequestOptions = {}): Promise<AnalysisQuotaResponse> {
   const response = await fetch(apiPath("/analysis/quota"), {
     method: "GET",
@@ -206,6 +223,20 @@ async function parseJsonResponse<T>(response: Response, fallbackMessage: string)
   }
 
   return payload as T;
+}
+
+async function parseEmptyResponse(response: Response, fallbackMessage: string): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  const payload = await readJson(response);
+  throw new ApiError(
+    extractErrorMessage(payload, fallbackMessage),
+    response.status,
+    payload,
+    parseRetryAfter(response.headers.get("Retry-After"))
+  );
 }
 
 async function readJson(response: Response): Promise<unknown> {
