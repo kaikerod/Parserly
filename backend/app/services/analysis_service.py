@@ -43,7 +43,7 @@ ALLOWED_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 GENERIC_UPLOAD_CONTENT_TYPES = {"", "application/octet-stream"}
-OPENROUTER_TOTAL_TIMEOUT_SECONDS = 120.0
+OPENROUTER_TOTAL_TIMEOUT_SECONDS = 160.0  # 2 × (connect5+write10+read60) + delay1 = 151 s worst-case
 OPENROUTER_RETRY_DELAY_SECONDS = 1.0
 OPENROUTER_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=10.0, pool=5.0)
 MIN_RESUME_WORDS = 40
