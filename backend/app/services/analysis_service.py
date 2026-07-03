@@ -43,9 +43,9 @@ ALLOWED_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 GENERIC_UPLOAD_CONTENT_TYPES = {"", "application/octet-stream"}
-OPENROUTER_TOTAL_TIMEOUT_SECONDS = 75.0
+OPENROUTER_TOTAL_TIMEOUT_SECONDS = 120.0
 OPENROUTER_RETRY_DELAY_SECONDS = 1.0
-OPENROUTER_TIMEOUT = httpx.Timeout(connect=5.0, read=25.0, write=10.0, pool=5.0)
+OPENROUTER_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=10.0, pool=5.0)
 MIN_RESUME_WORDS = 40
 MIN_ALPHA_RATIO = 0.45
 MAX_RAW_PDF_MARKERS = 3
