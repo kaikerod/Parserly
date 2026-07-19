@@ -1,0 +1,514 @@
+<!DOCTYPE html><html class="dark" lang="pt-br"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Parserly | ATS Analysis Dashboard</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        
+        @font-face {
+            font-family: 'Bahnschrift';
+            src: local('Bahnschrift'), local('Bahnschrift-Condensed'), local('Bahnschrift-Regular');
+        }
+
+        body {
+            background-color: #0B0B0C;
+            color: #e5e2e3;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* Blueprint Grid Background - Simplified as it's now secondary to the shader */
+        .blueprint-grid {
+            background-image: 
+                linear-gradient(rgba(62, 57, 72, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(62, 57, 72, 0.1) 1px, transparent 1px);
+            background-size: 76px 76px;
+        }
+
+        /* Glow Effects */
+        .neon-glow-primary {
+            box-shadow: 0 0 15px rgba(69, 255, 115, 0.2);
+        }
+        
+        .neon-glow-violet {
+            box-shadow: 0 0 30px rgba(109, 93, 252, 0.1);
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+
+        .dropzone-dash {
+            background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' stroke='%233E3948' stroke-width='2' stroke-dasharray='12%2c 12' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
+        }
+
+        /* Entrance Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in-up {
+            animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Glitch Effect */
+        @keyframes glitch {
+            0% { transform: translate(0); text-shadow: none; }
+            2% { transform: translate(-2px, 2px); text-shadow: 2px 0 #45FF73, -2px 0 #6D5DFC; }
+            4% { transform: translate(2px, -2px); text-shadow: -2px 0 #45FF73, 2px 0 #6D5DFC; }
+            6% { transform: translate(0); text-shadow: none; }
+            100% { transform: translate(0); text-shadow: none; }
+        }
+
+        .glitch-title {
+            animation: glitch 5s infinite;
+        }
+
+        /* Card Hover Effects */
+        .hover-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid #3E3948;
+        }
+
+        .hover-card:hover {
+            transform: scale(1.02);
+            border-color: #45FF73;
+            box-shadow: 0 0 20px rgba(69, 255, 115, 0.1);
+            background-color: rgba(27, 27, 29, 0.8);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #131314; }
+        ::-webkit-scrollbar-thumb { background: #3E3948; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #45FF73; }
+
+        /* Canvas Background */
+        #shader-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            pointer-events: none;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "#2a2a2b",
+                        "technical-line": "#3E3948",
+                        "surface-variant": "#353436",
+                        "on-tertiary-container": "#00705b",
+                        "on-tertiary-fixed-variant": "#005141",
+                        "inverse-primary": "#006e27",
+                        "on-tertiary": "#00382c",
+                        "electric-violet": "#6D5DFC",
+                        "on-surface-variant": "#bacbb6",
+                        "on-surface": "#e5e2e3",
+                        "surface-container-low": "#1c1b1c",
+                        "on-primary-fixed": "#002107",
+                        "surface": "#131314",
+                        "secondary-fixed": "#e4dfff",
+                        "primary-fixed": "#6bff84",
+                        "tertiary-container": "#55f8d2",
+                        "warning-amber": "#F0B347",
+                        "surface-dim": "#131314",
+                        "neon-acid": "#45FF73",
+                        "on-error-container": "#ffdad6",
+                        "surface-bright": "#3a393a",
+                        "inverse-on-surface": "#313031",
+                        "on-primary": "#003911",
+                        "error-container": "#93000a",
+                        "on-tertiary-fixed": "#002019",
+                        "primary": "#f5fff0",
+                        "on-error": "#690005",
+                        "background": "#131314",
+                        "on-primary-container": "#007229",
+                        "on-background": "#e5e2e3",
+                        "secondary-container": "#3e23ce",
+                        "inverse-surface": "#e5e2e3",
+                        "secondary-fixed-dim": "#c5c0ff",
+                        "surface-container": "#201f20",
+                        "surface-container-highest": "#353436",
+                        "on-secondary": "#2600a1",
+                        "surface-container-lowest": "#0e0e0f",
+                        "on-secondary-fixed-variant": "#3b1fcb",
+                        "outline": "#859582",
+                        "primary-fixed-dim": "#13e45d",
+                        "error": "#ffb4ab",
+                        "on-secondary-fixed": "#140067",
+                        "tertiary-fixed": "#59fcd5",
+                        "primary-container": "#45ff73",
+                        "tertiary-fixed-dim": "#2fdfba",
+                        "secondary": "#c5c0ff",
+                        "tertiary": "#f0fff8",
+                        "drafting-paper": "#F4F1EA",
+                        "on-primary-fixed-variant": "#00531c",
+                        "slate-graphite": "#1B1B1D",
+                        "critical-coral": "#FF684F",
+                        "outline-variant": "#3c4b3b",
+                        "surface-tint": "#13e45d",
+                        "on-secondary-container": "#b6b0ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "xl": "32px",
+                        "gutter": "28px",
+                        "unit": "4px",
+                        "xs": "4px",
+                        "container-max": "1280px",
+                        "md": "16px",
+                        "lg": "24px"
+                    },
+                    "fontFamily": {
+                        "code-mono": ["jetbrainsMono"],
+                        "display-lg": ["Bahnschrift"],
+                        "body-bold": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "body-base": ["Inter"],
+                        "headline-md": ["Bahnschrift"],
+                        "display-xl": ["Bahnschrift"],
+                        "label-caps": ["Inter"]
+                    },
+                    "fontSize": {
+                        "code-mono": ["12px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "display-lg": ["36px", {"lineHeight": "1.1", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-bold": ["14px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "body-sm": ["14px", {"lineHeight": "1.4", "fontWeight": "400"}],
+                        "body-base": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "1.3", "letterSpacing": "0", "fontWeight": "600"}],
+                        "display-xl": ["48px", {"lineHeight": "1.0", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "label-caps": ["12px", {"lineHeight": "1.2", "letterSpacing": "0.05em", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface">
+<!-- Fullscreen Shader Background -->
+<canvas id="shader-canvas" width="1280" height="1061"></canvas>
+<!-- TopNavBar Shell -->
+<header class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md border-b border-technical-line">
+<div class="flex justify-between items-center px-gutter py-md max-w-container-max mx-auto">
+<div class="flex items-center gap-xl">
+<a class="font-display-lg text-headline-md text-neon-acid tracking-tight flex items-center gap-sm group" href="#">
+<span class="material-symbols-outlined text-neon-acid group-hover:rotate-12 transition-transform duration-300" style="font-variation-settings: 'FILL' 1;">terminal</span>
+                Parserly
+            </a>
+<nav class="hidden md:flex items-center gap-lg">
+<a class="text-neon-acid border-b-2 border-neon-acid pb-1 font-body-bold text-body-bold" href="#">Dashboard</a>
+<a class="text-on-surface-variant font-body-base hover:text-neon-acid transition-colors duration-200" href="#">Analysis</a>
+<a class="text-on-surface-variant font-body-base hover:text-neon-acid transition-colors duration-200" href="#">History</a>
+<a class="text-on-surface-variant font-body-base hover:text-neon-acid transition-colors duration-200" href="#">Settings</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<button class="bg-primary-container text-on-primary px-lg py-sm rounded font-body-bold hover:brightness-110 active:scale-95 duration-100 transition-all neon-glow-primary">
+                Upload Resume
+            </button>
+<div class="flex gap-sm">
+<button class="text-on-surface-variant hover:text-neon-acid p-xs">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-neon-acid p-xs">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="pt-24 min-h-screen relative">
+<div class="max-w-container-max mx-auto px-gutter py-xl relative z-10">
+<!-- Hero Section -->
+<div class="mb-xl animate-fade-in-up" style="animation-delay: 0.1s;">
+<div class="inline-flex items-center gap-sm px-md py-xs bg-surface-container-low border border-technical-line rounded-full mb-md">
+<span class="material-symbols-outlined text-neon-acid text-sm">precision_manufacturing</span>
+<span class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-widest">Analisador ATS</span>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-xl items-end">
+<div>
+<h1 class="font-display-xl text-display-xl mb-md leading-none text-on-surface glitch-title">
+                        Analise seu currículo <br> <span class="text-neon-acid">antes da candidatura</span>
+</h1>
+<p class="text-body-base text-on-surface-variant max-w-xl">
+                        Envie um PDF ou DOCX, receba a nota ATS e veja as correções que mais impactam sua próxima candidatura. Sistema de diagnóstico tático em tempo real.
+                    </p>
+</div>
+<div class="flex flex-wrap gap-md justify-end">
+<div class="p-md bg-slate-graphite/60 backdrop-blur-sm hover-card min-w-[140px]">
+<p class="text-body-sm text-on-surface-variant mb-xs">Teste grátis</p>
+<p class="text-headline-md font-display-lg text-neon-acid">Sem login</p>
+<p class="text-xs text-on-surface-variant mt-sm">até o limite inicial</p>
+</div>
+<div class="p-md bg-slate-graphite/60 backdrop-blur-sm hover-card min-w-[140px]">
+<p class="text-body-sm text-on-surface-variant mb-xs">Arquivos</p>
+<p class="text-headline-md font-display-lg text-white">PDF/DOCX</p>
+<p class="text-xs text-on-surface-variant mt-sm">até 5 MB</p>
+</div>
+<div class="p-md bg-slate-graphite/60 backdrop-blur-sm hover-card min-w-[140px]">
+<p class="text-body-sm text-on-surface-variant mb-xs">Após limite</p>
+<p class="text-headline-md font-display-lg text-secondary-fixed">Google</p>
+<p class="text-xs text-on-surface-variant mt-sm">ou magic link</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Workspace Grid -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-lg h-auto">
+<!-- Left Panel: Upload Zone -->
+<div class="md:col-span-4 flex flex-col gap-lg animate-fade-in-up" style="animation-delay: 0.2s;">
+<div class="bg-slate-graphite/60 backdrop-blur-sm border border-technical-line p-lg relative group hover-card">
+<div class="flex justify-between items-center mb-lg">
+<div>
+<span class="text-xs font-label-caps text-neon-acid block mb-xs">UPLOAD</span>
+<h2 class="text-headline-md font-display-lg text-on-surface">Novo currículo</h2>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant opacity-50">lock</span>
+</div>
+<div class="dropzone-dash min-h-[340px] flex flex-col items-center justify-center p-xl relative overflow-hidden transition-all duration-300 group-hover:bg-neon-acid/5 cursor-pointer">
+<div class="w-16 h-16 bg-neon-acid flex items-center justify-center rounded-lg mb-lg neon-glow-primary transform group-hover:scale-110 transition-transform duration-200">
+<span class="material-symbols-outlined text-background text-3xl" style="font-variation-settings: 'wght' 700;">cloud_upload</span>
+</div>
+<h3 class="text-headline-md font-display-lg mb-sm text-center">Solte seu currículo aqui</h3>
+<p class="text-body-sm text-on-surface-variant text-center mb-lg px-md">
+                            Aceitamos PDF ou DOCX até 5 MB. A validação acontece antes do envio.
+                        </p>
+<div class="flex gap-sm">
+<span class="px-sm py-1 bg-surface-container-high border border-technical-line text-[10px] font-bold text-on-surface uppercase tracking-wider">PDF</span>
+<span class="px-sm py-1 bg-surface-container-high border border-technical-line text-[10px] font-bold text-on-surface uppercase tracking-wider">DOCX</span>
+<span class="px-sm py-1 bg-surface-container-high border border-technical-line text-[10px] font-bold text-on-surface uppercase tracking-wider">5 MB</span>
+</div>
+</div>
+<div class="mt-lg flex items-start gap-sm">
+<span class="material-symbols-outlined text-neon-acid text-sm mt-1">verified_user</span>
+<p class="text-[11px] leading-relaxed text-on-surface-variant">
+                            O arquivo é enviado apenas quando passa pelas regras de formato e tamanho estabelecidas pelo protocolo Parserly.
+                        </p>
+</div>
+</div>
+</div>
+<!-- Right Panel: Result Placeholder -->
+<div class="md:col-span-8 animate-fade-in-up" style="animation-delay: 0.3s;">
+<div class="bg-slate-graphite/60 backdrop-blur-sm border border-technical-line h-full p-xl relative overflow-hidden flex flex-col items-center justify-center min-h-[500px] hover-card">
+<div class="relative z-10 flex flex-col items-center text-center max-w-lg">
+<div class="w-16 h-16 bg-electric-violet/20 border border-electric-violet flex items-center justify-center rounded-lg mb-lg">
+<span class="material-symbols-outlined text-electric-violet text-3xl">analytics</span>
+</div>
+<h2 class="text-display-lg font-display-lg mb-md leading-tight">Seu relatório aparecerá aqui</h2>
+<p class="text-body-base text-on-surface-variant mb-xl">
+                            Quando a análise retornar, a nota, os diagnósticos por categoria e as recomendações priorizadas serão renderizados neste espaço.
+                        </p>
+<!-- Placeholder Indicators -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-md w-full">
+<div class="bg-background/40 backdrop-blur-sm border border-technical-line p-lg text-left">
+<span class="text-[10px] font-label-caps text-on-surface-variant block mb-sm uppercase">Score ATS</span>
+<div class="flex items-end gap-sm mb-md">
+<span class="text-display-lg font-display-lg text-neon-acid" id="ats-score-counter">82</span>
+</div>
+<div class="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+<div class="w-[82%] h-full bg-neon-acid neon-glow-primary transition-all duration-1000 delay-500 ease-out"></div>
+</div>
+</div>
+<div class="bg-background/40 backdrop-blur-sm border border-technical-line p-lg text-left">
+<span class="text-[10px] font-label-caps text-on-surface-variant block mb-sm uppercase">Estrutura</span>
+<div class="space-y-sm mt-md">
+<div class="h-1.5 w-full bg-electric-violet/40 rounded-full"></div>
+<div class="h-1.5 w-[70%] bg-surface-container-high rounded-full"></div>
+<div class="h-1.5 w-[50%] bg-surface-container-high rounded-full"></div>
+</div>
+</div>
+<div class="bg-background/40 backdrop-blur-sm border border-technical-line p-lg text-left">
+<span class="text-[10px] font-label-caps text-on-surface-variant block mb-sm uppercase">Prioridade</span>
+<p class="text-headline-md font-display-lg text-warning-amber">Alta</p>
+<p class="text-[11px] text-on-surface-variant mt-sm">palavras-chave</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Dashboard Sub-Header -->
+<div class="mt-lg p-lg bg-slate-graphite/80 backdrop-blur-sm border border-technical-line flex flex-wrap justify-between items-center gap-md animate-fade-in-up" style="animation-delay: 0.4s;">
+<div class="flex items-center gap-lg">
+<div class="flex items-center gap-sm">
+<div class="w-10 h-10 bg-surface-container-high flex items-center justify-center border border-technical-line">
+<span class="material-symbols-outlined text-neon-acid">auto_awesome</span>
+</div>
+<div>
+<p class="text-xs font-bold text-white leading-tight">Análise ATS com diagnóstico acionável</p>
+<p class="text-[10px] text-on-surface-variant">Prioridade alta em metadados e layout.</p>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-sm">
+<div class="hidden sm:block text-right mr-sm">
+<p class="text-[10px] text-on-surface-variant">STATUS DO SISTEMA</p>
+<p class="text-xs font-code-mono text-neon-acid uppercase">Ready for Input_</p>
+</div>
+<button class="px-md py-sm border border-technical-line text-on-surface-variant hover:bg-surface-container-high transition-colors font-body-bold text-body-bold">
+                    Ver Guia
+                </button>
+<button class="px-md py-sm bg-neon-acid text-background font-body-bold text-body-bold hover:brightness-110 active:scale-95 transition-all">
+                    Começar Agora
+                </button>
+</div>
+</div>
+</div>
+</main>
+<!-- UI Overlay elements -->
+<div class="fixed bottom-lg right-lg z-40 hidden lg:block">
+<button class="w-12 h-12 bg-surface-container border border-technical-line flex items-center justify-center hover:text-neon-acid transition-all duration-200 group">
+<span class="material-symbols-outlined">help_outline</span>
+<span class="absolute right-full mr-sm bg-surface-container border border-technical-line px-sm py-1 text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">SUPPORT MODE</span>
+</button>
+</div>
+<script>
+    /**
+     * SHADER SYSTEM (ANIMATION_9)
+     */
+    const canvas = document.getElementById('shader-canvas');
+    const gl = canvas.getContext('webgl');
+
+    const vertexShaderSrc = `
+        attribute vec2 position;
+        varying vec2 v_texCoord;
+        void main() {
+            v_texCoord = position * 0.5 + 0.5;
+            v_texCoord.y = 1.0 - v_texCoord.y;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    `;
+
+    const fragmentShaderSrc = `
+        precision highp float;
+        varying vec2 v_texCoord;
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;
+
+        float grid(vec2 uv, float spacing) {
+            vec2 grid = abs(fract(uv / spacing - 0.5) - 0.5) / fwidth(uv / spacing);
+            return 1.0 - min(min(grid.x, grid.y), 1.0);
+        }
+
+        void main() {
+            vec2 uv = v_texCoord;
+            vec2 mouse = u_mouse / u_resolution;
+            
+            vec3 color = vec3(0.075, 0.075, 0.078); 
+            vec3 accent = vec3(0.27, 1.0, 0.45); 
+            
+            float g1 = grid(uv, 0.1);
+            color += accent * g1 * 0.05;
+            
+            float g2 = grid(uv, 0.02);
+            color += accent * g2 * 0.02;
+            
+            float d = distance(uv, mouse);
+            float glow = smoothstep(0.3, 0.0, d);
+            color += accent * glow * 0.15;
+            
+            float scanline = sin(uv.y * 10.0 + u_time * 2.0) * 0.01;
+            color += accent * scanline * glow;
+            
+            float vignette = smoothstep(1.5, 0.5, length(uv - 0.5));
+            color *= vignette;
+            
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    function createShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        return shader;
+    }
+
+    const program = gl.createProgram();
+    gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vertexShaderSrc));
+    gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSrc));
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+    const positionLocation = gl.getAttribLocation(program, 'position');
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+    const timeLoc = gl.getUniformLocation(program, 'u_time');
+    const resLoc = gl.getUniformLocation(program, 'u_resolution');
+    const mouseLoc = gl.getUniformLocation(program, 'u_mouse');
+
+    let mouseX = 0, mouseY = 0;
+    window.addEventListener('mousemove', (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+    });
+
+    function render(time) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        
+        gl.uniform1f(timeLoc, time * 0.001);
+        gl.uniform2f(resLoc, canvas.width, canvas.height);
+        gl.uniform2f(mouseLoc, mouseX, mouseY);
+        
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+
+    // Micro-interaction for dropzone
+    const dropzone = document.querySelector('.dropzone-dash');
+    if (dropzone) {
+        dropzone.addEventListener('mouseenter', () => {
+            dropzone.style.borderColor = '#45FF73';
+        });
+        dropzone.addEventListener('mouseleave', () => {
+            dropzone.style.borderColor = 'transparent';
+        });
+        dropzone.addEventListener('click', () => {
+            console.log('Opening file dialog...');
+        });
+    }
+
+    // Dashboard Number Counter Simulation
+    const scoreElement = document.getElementById('ats-score-counter');
+    if (scoreElement) {
+        let target = parseInt(scoreElement.innerText);
+        let count = 0;
+        const updateCount = () => {
+            if (count < target) {
+                count++;
+                scoreElement.innerText = count;
+                setTimeout(updateCount, 20);
+            }
+        };
+        setTimeout(updateCount, 1200);
+    }
+</script>
+</body></html>

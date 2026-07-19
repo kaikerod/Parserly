@@ -1,0 +1,411 @@
+<!DOCTYPE html><html class="dark" lang="pt-BR"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Parserly | Login</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/inter-ui/inter.css" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "#2a2a2b",
+                        "technical-line": "#3E3948",
+                        "surface-variant": "#353436",
+                        "on-tertiary-container": "#00705b",
+                        "on-tertiary-fixed-variant": "#005141",
+                        "inverse-primary": "#006e27",
+                        "on-tertiary": "#00382c",
+                        "electric-violet": "#6D5DFC",
+                        "on-surface-variant": "#bacbb6",
+                        "on-surface": "#e5e2e3",
+                        "surface-container-low": "#1c1b1c",
+                        "on-primary-fixed": "#002107",
+                        "surface": "#131314",
+                        "secondary-fixed": "#e4dfff",
+                        "primary-fixed": "#6bff84",
+                        "tertiary-container": "#55f8d2",
+                        "warning-amber": "#F0B347",
+                        "surface-dim": "#131314",
+                        "neon-acid": "#45FF73",
+                        "on-error-container": "#ffdad6",
+                        "surface-bright": "#3a393a",
+                        "inverse-on-surface": "#313031",
+                        "on-primary": "#003911",
+                        "error-container": "#93000a",
+                        "on-tertiary-fixed": "#002019",
+                        "primary": "#f5fff0",
+                        "on-error": "#690005",
+                        "background": "#131314",
+                        "on-primary-container": "#007229",
+                        "on-background": "#e5e2e3",
+                        "secondary-container": "#3e23ce",
+                        "inverse-surface": "#e5e2e3",
+                        "secondary-fixed-dim": "#c5c0ff",
+                        "surface-container": "#201f20",
+                        "surface-container-highest": "#353436",
+                        "on-secondary": "#2600a1",
+                        "surface-container-lowest": "#0e0e0f",
+                        "on-secondary-fixed-variant": "#3b1fcb",
+                        "outline": "#859582",
+                        "primary-fixed-dim": "#13e45d",
+                        "error": "#ffb4ab",
+                        "on-secondary-fixed": "#140067",
+                        "tertiary-fixed": "#59fcd5",
+                        "primary-container": "#45ff73",
+                        "tertiary-fixed-dim": "#2fdfba",
+                        "secondary": "#c5c0ff",
+                        "tertiary": "#f0fff8",
+                        "drafting-paper": "#F4F1EA",
+                        "on-primary-fixed-variant": "#00531c",
+                        "slate-graphite": "#1B1B1D",
+                        "critical-coral": "#FF684F",
+                        "outline-variant": "#3c4b3b",
+                        "surface-tint": "#13e45d",
+                        "on-secondary-container": "#b6b0ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "xl": "32px",
+                        "gutter": "28px",
+                        "unit": "4px",
+                        "xs": "4px",
+                        "container-max": "1280px",
+                        "md": "16px",
+                        "lg": "24px"
+                    },
+                    "fontFamily": {
+                        "code-mono": ["jetbrainsMono"],
+                        "display-lg": ["Bahnschrift", "sans-serif"],
+                        "body-bold": ["Inter", "sans-serif"],
+                        "body-sm": ["Inter", "sans-serif"],
+                        "body-base": ["Inter", "sans-serif"],
+                        "headline-md": ["Bahnschrift", "sans-serif"],
+                        "display-xl": ["Bahnschrift", "sans-serif"],
+                        "label-caps": ["Inter", "sans-serif"]
+                    },
+                    "fontSize": {
+                        "code-mono": ["12px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "display-lg": ["36px", {"lineHeight": "1.1", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-bold": ["14px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "body-sm": ["14px", {"lineHeight": "1.4", "fontWeight": "400"}],
+                        "body-base": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "1.3", "letterSpacing": "0", "fontWeight": "600"}],
+                        "display-xl": ["48px", {"lineHeight": "1.0", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "label-caps": ["12px", {"lineHeight": "1.2", "letterSpacing": "0.05em", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        @font-face {
+            font-family: 'Bahnschrift';
+            src: url('https://fonts.cdnfonts.com/s/14873/BAHNSCHRIFT.woff') format('woff');
+        }
+        
+        body {
+            background-color: #0B0B0C;
+            overflow-x: hidden;
+        }
+
+        .shader-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.6;
+        }
+
+        .animate-fade-up {
+            animation: fadeUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            opacity: 0;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .hover-card-dynamic {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .hover-card-dynamic:hover {
+            transform: scale(1.02);
+            border-color: #45FF73;
+            box-shadow: 0 0 20px rgba(69, 255, 115, 0.15);
+        }
+
+        .glitch-title {
+            position: relative;
+        }
+
+        .glitch-title::after {
+            content: attr(data-text);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+        }
+
+        .glitch-active::after {
+            opacity: 0.5;
+            animation: glitch 0.3s cubic-bezier(.25,.46,.45,.94) infinite;
+            color: #45FF73;
+            z-index: -1;
+        }
+
+        @keyframes glitch {
+            0% { transform: translate(0); }
+            20% { transform: translate(-2px, 2px); }
+            40% { transform: translate(-2px, -2px); }
+            60% { transform: translate(2px, 2px); }
+            80% { transform: translate(2px, -2px); }
+            100% { transform: translate(0); }
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="font-body-base text-on-surface">
+<canvas class="shader-canvas" id="shader-bg" width="1280" height="1024"></canvas>
+<!-- Header / Navigation -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-gutter py-md max-w-container-max mx-auto left-0 right-0 animate-fade-up">
+<div class="flex items-center gap-sm">
+<div class="w-10 h-10 bg-secondary-container flex items-center justify-center rounded-lg">
+<span class="material-symbols-outlined text-on-secondary-container">description</span>
+</div>
+<span class="font-display-lg text-headline-md text-neon-acid tracking-tight">Parserly</span>
+</div>
+<div class="flex items-center gap-lg">
+<div class="hidden md:flex gap-md text-on-surface-variant font-body-sm">
+<span class="flex items-center gap-xs">
+<span class="material-symbols-outlined text-[18px]">verified_user</span>
+                Privacidade
+            </span>
+<span class="opacity-50">/</span>
+<span>Análise ATS para currículos</span>
+</div>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="relative z-10 min-h-screen flex items-center justify-center pt-24 px-gutter">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-xl max-w-container-max w-full items-center">
+<!-- Left Side: Identity & Value Prop -->
+<div class="space-y-lg animate-fade-up" style="animation-delay: 0.1s;">
+<div class="inline-flex items-center gap-xs px-md py-xs bg-surface-container-high border border-technical-line rounded-full">
+<span class="material-symbols-outlined text-neon-acid text-[18px]">shield_lock</span>
+<span class="text-label-caps text-on-surface-variant">Acesso seguro</span>
+</div>
+<h1 class="font-display-xl text-display-xl leading-none glitch-title" data-text="Acesse sua conta. Continue sua análise." id="main-title">
+                Acesse sua conta.<br>
+                Continue sua <span class="text-neon-acid">análise.</span>
+</h1>
+<p class="text-body-base text-on-surface-variant max-w-md">
+                Entre com Google ou receba um link por e-mail para manter sua quota e continuar suas análises sem senha.
+            </p>
+<!-- Status Cards (Bento style) -->
+<div class="grid grid-cols-3 gap-md pt-xl">
+<div class="p-lg bg-surface-container-low border border-technical-line rounded-lg hover-card-dynamic">
+<span class="text-label-caps text-on-surface-variant block mb-sm">Acesso</span>
+<span class="font-headline-md text-headline-md text-neon-acid block">Google</span>
+</div>
+<div class="p-lg bg-surface-container-low border border-technical-line rounded-lg hover-card-dynamic">
+<span class="text-label-caps text-on-surface-variant block mb-sm">Alternativa</span>
+<span class="font-headline-md text-headline-md text-secondary block">Link E-mail</span>
+</div>
+<div class="p-lg bg-surface-container-low border border-technical-line rounded-lg hover-card-dynamic">
+<span class="text-label-caps text-on-surface-variant block mb-sm">Sessão</span>
+<span class="font-headline-md text-headline-md text-warning-amber block">7 dias</span>
+</div>
+</div>
+</div>
+<!-- Right Side: Auth Card -->
+<div class="flex justify-center lg:justify-end animate-fade-up" style="animation-delay: 0.2s;">
+<div class="w-full max-w-md bg-slate-graphite border border-technical-line p-xl rounded-xl relative group transition-all duration-500 hover:border-neon-acid/50 hover-card-dynamic">
+<!-- Card Glow Effect -->
+<div class="absolute -inset-px bg-gradient-to-br from-neon-acid/10 to-transparent rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+<header class="flex justify-between items-start mb-xl relative">
+<div>
+<span class="text-label-caps text-neon-acid block mb-xs">Acesso sem senha</span>
+<h2 class="font-display-lg text-display-lg text-on-surface glitch-title" data-text="Entrar no Parserly" id="card-title">Entrar no Parserly</h2>
+</div>
+<span class="material-symbols-outlined text-neon-acid" style="font-variation-settings: 'FILL' 1;">verified</span>
+</header>
+<div class="space-y-lg relative">
+<!-- Google Auth Button -->
+<button class="w-full h-[56px] bg-drafting-paper text-on-primary-fixed flex items-center justify-center gap-md font-body-bold text-body-bold rounded-lg transition-transform active:scale-95 duration-100 hover:shadow-[0_0_20px_rgba(244,241,234,0.15)]">
+<img alt="Google Logo" class="w-6 h-6" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDsiAVGfd4e-G2Bobx9dn8KhJCEfp_yHFiPSugoUtU7f7fun6tqB61aG1GHPQIgUORWXu0a22U73-niYRwBDojbBRsBGK5A-aUKyddeO7e5Jl9XIvRKN9QWAeI4bbkOmCn4o-5Jr9HgeB-fyR1DOHhRFLL9MB-pOL3hh2mVBbpy4Sy6ujJREN5fQxncXEjkqXboYntNTtbPN-oNZQe5ILd2WEkSY48BIeXMbTsg2bkYMJIzsgKzU_NYsg">
+                        Continuar com Google
+                        <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+<div class="flex items-center gap-md py-xs">
+<div class="flex-1 h-px bg-technical-line"></div>
+<span class="text-label-caps text-on-surface-variant">E-mail</span>
+<div class="flex-1 h-px bg-technical-line"></div>
+</div>
+<!-- Email Form -->
+<div class="space-y-md">
+<div class="relative transition-all duration-200">
+<span class="absolute left-md top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant">mail</span>
+<input class="w-full bg-surface-container-lowest border border-technical-line text-on-surface pl-xl pr-md py-xl font-body-base rounded-lg focus:ring-0 focus:border-neon-acid outline-none placeholder:text-surface-variant transition-colors" placeholder="voce@empresa.com" type="email">
+</div>
+<p class="text-body-sm text-on-surface-variant text-[12px] opacity-70">
+                            Se for seu primeiro acesso, o Parserly cria sua conta ao verificar o link.
+                        </p>
+<button class="group w-full h-[56px] bg-neon-acid text-on-primary flex items-center justify-center gap-md font-body-bold text-body-bold rounded-lg transition-all duration-300 hover:brightness-110 hover:-translate-y-0.5 active:scale-95 active:translate-y-0 hover:shadow-[0_0_30px_rgba(69,255,115,0.3)]">
+<span class="material-symbols-outlined transition-transform group-hover:rotate-12">send</span>
+                            Receber link por e-mail
+                        </button>
+</div>
+<footer class="pt-lg flex items-start gap-sm">
+<span class="material-symbols-outlined text-warning-amber text-[20px]">schedule</span>
+<p class="text-body-sm text-on-surface-variant text-[12px]">
+                            Solicitações são limitadas por e-mail para proteger o acesso.
+                        </p>
+</footer>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Stats -->
+<div class="fixed bottom-0 w-full p-md pointer-events-none z-20">
+<div class="max-w-container-max mx-auto flex justify-between text-code-mono text-technical-line uppercase tracking-widest text-[10px]">
+<span>SYSTEM_STATUS: ONLINE</span>
+<span>ENCRYPTION: AES-256</span>
+<span>LOC: GLOBAL_CDN</span>
+</div>
+</div>
+<script>
+    // WebGL Shader Background Logic
+    const canvas = document.getElementById('shader-bg');
+    const gl = canvas.getContext('webgl');
+
+    if (gl) {
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            varying vec2 v_texCoord;
+            void main() {
+                v_texCoord = a_position * 0.5 + 0.5;
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision highp float;
+            varying vec2 v_texCoord;
+            uniform float u_time;
+            uniform vec2 u_resolution;
+            uniform vec2 u_mouse;
+
+            float grid(vec2 uv, float spacing) {
+                vec2 grid = abs(fract(uv / spacing - 0.5) - 0.5) / fwidth(uv / spacing);
+                return 1.0 - min(min(grid.x, grid.y), 1.0);
+            }
+
+            void main() {
+                vec2 uv = v_texCoord;
+                vec2 mouse = u_mouse / u_resolution;
+                vec3 color = vec3(0.075, 0.075, 0.078); 
+                vec3 accent = vec3(0.27, 1.0, 0.45); 
+                float g1 = grid(uv, 0.1);
+                color += accent * g1 * 0.05;
+                float g2 = grid(uv, 0.02);
+                color += accent * g2 * 0.02;
+                float d = distance(uv, mouse);
+                float glow = smoothstep(0.3, 0.0, d);
+                color += accent * glow * 0.15;
+                float scanline = sin(uv.y * 10.0 + u_time * 2.0) * 0.01;
+                color += accent * scanline * glow;
+                float vignette = smoothstep(1.5, 0.5, length(uv - 0.5));
+                color *= vignette;
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            return shader;
+        }
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+
+        const positionLocation = gl.getAttribLocation(program, 'a_position');
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        const timeLocation = gl.getUniformLocation(program, 'u_time');
+        const resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
+        const mouseLocation = gl.getUniformLocation(program, 'u_mouse');
+
+        let mouseX = 0, mouseY = 0;
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = window.innerHeight - e.clientY;
+        });
+
+        function render(time) {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform1f(timeLocation, time * 0.001);
+            gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+            gl.uniform2f(mouseLocation, mouseX, mouseY);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    }
+
+    // Glitch effect on load
+    window.addEventListener('DOMContentLoaded', () => {
+        const titles = document.querySelectorAll('.glitch-title');
+        titles.forEach(title => {
+            title.classList.add('glitch-active');
+            setTimeout(() => {
+                title.classList.remove('glitch-active');
+            }, 600);
+        });
+    });
+
+    // Email Input visual feedback
+    const emailInput = document.querySelector('input[type="email"]');
+    emailInput.addEventListener('input', (e) => {
+        if (e.target.value.includes('@')) {
+            e.target.classList.add('border-neon-acid');
+            e.target.classList.remove('border-technical-line');
+        } else {
+            e.target.classList.remove('border-neon-acid');
+            e.target.classList.add('border-technical-line');
+        }
+    });
+</script>
+</body></html>

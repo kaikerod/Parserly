@@ -15,6 +15,7 @@ import {
   UserCheck
 } from "lucide-react";
 import { ApiError, googleOAuthStartPath, requestMagicLink } from "@/lib/api";
+import { TechnicalShader } from "@/components/shared/technical-shader";
 
 type LoginPhase = "idle" | "submitting" | "sent" | "error";
 type LoginIntent = "login" | "registration";
@@ -151,9 +152,11 @@ export function LoginClient({
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden px-4 py-5 text-paper sm:px-6 lg:px-8">
+    <>
+      <TechnicalShader />
+      <main className="technical-page min-h-screen px-4 py-5 text-paper sm:px-6 lg:px-8">
       <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-7xl flex-col gap-7">
-        <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-line/55 pb-4 text-xs text-paper/60">
+        <nav className="blueprint-surface -mx-4 flex flex-wrap items-center justify-between gap-3 border-y border-line/75 px-4 py-3 text-xs text-paper/60 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-violet text-paper shadow-glow">
               <FileSearch className="h-5 w-5" aria-hidden="true" />
@@ -208,7 +211,7 @@ export function LoginClient({
               {markers.map((marker) => (
                 <div
                   key={marker.label}
-                  className="rounded-md border border-line/70 bg-graphite/90 p-4"
+                  className="blueprint-card rounded-md border border-line/70 bg-graphite/80 p-4"
                 >
                   <p className="text-xs font-semibold text-paper/60">{marker.label}</p>
                   <p className="mt-2 font-display text-2xl font-semibold text-copper">
@@ -221,7 +224,7 @@ export function LoginClient({
 
           <section
             aria-labelledby="login-title"
-            className="rounded-md border border-line/75 bg-graphite/95 p-5 sm:p-6"
+            className="blueprint-card blueprint-surface rounded-md border border-line/75 p-5 shadow-panel sm:p-6"
           >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div>
@@ -441,7 +444,8 @@ export function LoginClient({
           </section>
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 

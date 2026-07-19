@@ -130,6 +130,10 @@ const nextConfig = {
         headers: publicPageCacheHeaders
       },
       {
+        source: "/cadastro",
+        headers: publicPageCacheHeaders
+      },
+      {
         source: "/privacidade",
         headers: publicPageCacheHeaders
       },

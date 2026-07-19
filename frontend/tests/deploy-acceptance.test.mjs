@@ -413,6 +413,20 @@ test("login page is framed as Google-first passwordless access", async () => {
   assert.match(loginPage, /intent=\{isRegistrationIntent \? "registration" : "login"\}/);
 });
 
+test("registration has a dedicated public route backed by the passwordless auth flow", async () => {
+  const registrationPage = await readSource("app/cadastro/page.tsx");
+  const dashboard = await readSource("components/dashboard/dashboard-client.tsx");
+  const proxy = await readSource("proxy.ts");
+  const nextConfig = await readSource("next.config.mjs");
+
+  assert.match(registrationPage, /title: "Criar acesso \| Parserly"/);
+  assert.match(registrationPage, /intent="registration"/);
+  assert.match(registrationPage, /Você atingiu o limite gratuito\. Crie seu acesso para continuar\./);
+  assert.match(dashboard, /href="\/cadastro"/);
+  assert.match(proxy, /"\/cadastro"/);
+  assert.match(nextConfig, /source: "\/cadastro"/);
+});
+
 test("login page shows Google OAuth access next to magic link", async () => {
   const loginClient = await readSource("components/auth/login-client.tsx");
   const loginPage = await readSource("app/login/page.tsx");

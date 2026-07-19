@@ -1,0 +1,440 @@
+<!DOCTYPE html><html class="dark" lang="pt-BR"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Parserly - Criar Acesso</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+        @font-face {
+            font-family: 'Bahnschrift';
+            src: local('Bahnschrift'), url('https://fonts.cdnfonts.com/s/14237/Bahnschrift.woff') format('woff');
+        }
+
+        body {
+            background-color: #0B0B0C;
+            color: #e5e2e3;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        #shader-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+
+        .blueprint-card {
+            border: 1px solid #3E3948;
+            background: rgba(27, 27, 29, 0.7);
+            backdrop-filter: blur(12px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .blueprint-card:hover {
+            transform: scale(1.02);
+            border-color: #45FF73;
+            box-shadow: 0 0 20px rgba(69, 255, 115, 0.15);
+        }
+
+        .input-well {
+            background: rgba(11, 11, 12, 0.8);
+            border: 1px solid #3E3948;
+            transition: all 0.2s ease;
+        }
+
+        .input-well:focus-within {
+            border-color: #45FF73;
+            box-shadow: 0 0 0 2px #0B0B0C, 0 0 10px rgba(69, 255, 115, 0.3);
+        }
+
+        .glow-button {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glow-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 15px rgba(69, 255, 115, 0.4);
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-up {
+            opacity: 0;
+            animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        @keyframes glitch {
+            0% { transform: translate(0); text-shadow: -2px 0 #6D5DFC, 2px 0 #45FF73; }
+            2% { transform: translate(-2px, 1px); }
+            4% { transform: translate(-2px, -1px); }
+            6% { transform: translate(2px, 1px); }
+            8% { transform: translate(2px, -1px); }
+            10% { transform: translate(0); text-shadow: none; }
+            100% { transform: translate(0); }
+        }
+
+        .glitch-effect {
+            animation: glitch 3s infinite;
+        }
+
+        .delay-100 { animation-delay: 0.1s; }
+        .delay-200 { animation-delay: 0.2s; }
+        .delay-300 { animation-delay: 0.3s; }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-container-high": "#2a2a2b",
+                      "technical-line": "#3E3948",
+                      "surface-variant": "#353436",
+                      "on-tertiary-container": "#00705b",
+                      "on-tertiary-fixed-variant": "#005141",
+                      "inverse-primary": "#006e27",
+                      "on-tertiary": "#00382c",
+                      "electric-violet": "#6D5DFC",
+                      "on-surface-variant": "#bacbb6",
+                      "on-surface": "#e5e2e3",
+                      "surface-container-low": "#1c1b1c",
+                      "on-primary-fixed": "#002107",
+                      "surface": "#131314",
+                      "secondary-fixed": "#e4dfff",
+                      "primary-fixed": "#6bff84",
+                      "tertiary-container": "#55f8d2",
+                      "warning-amber": "#F0B347",
+                      "surface-dim": "#131314",
+                      "neon-acid": "#45FF73",
+                      "on-error-container": "#ffdad6",
+                      "surface-bright": "#3a393a",
+                      "inverse-on-surface": "#313031",
+                      "on-primary": "#003911",
+                      "error-container": "#93000a",
+                      "on-tertiary-fixed": "#002019",
+                      "primary": "#f5fff0",
+                      "on-error": "#690005",
+                      "background": "#131314",
+                      "on-primary-container": "#007229",
+                      "on-background": "#e5e2e3",
+                      "secondary-container": "#3e23ce",
+                      "inverse-surface": "#e5e2e3",
+                      "secondary-fixed-dim": "#c5c0ff",
+                      "surface-container": "#201f20",
+                      "surface-container-highest": "#353436",
+                      "on-secondary": "#2600a1",
+                      "surface-container-lowest": "#0e0e0f",
+                      "on-secondary-fixed-variant": "#3b1fcb",
+                      "outline": "#859582",
+                      "primary-fixed-dim": "#13e45d",
+                      "error": "#ffb4ab",
+                      "on-secondary-fixed": "#140067",
+                      "tertiary-fixed": "#59fcd5",
+                      "primary-container": "#45ff73",
+                      "tertiary-fixed-dim": "#2fdfba",
+                      "secondary": "#c5c0ff",
+                      "tertiary": "#f0fff8",
+                      "drafting-paper": "#F4F1EA",
+                      "on-primary-fixed-variant": "#00531c",
+                      "slate-graphite": "#1B1B1D",
+                      "critical-coral": "#FF684F",
+                      "outline-variant": "#3c4b3b",
+                      "surface-tint": "#13e45d",
+                      "on-secondary-container": "#b6b0ff"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "sm": "8px",
+                      "xl": "32px",
+                      "gutter": "28px",
+                      "unit": "4px",
+                      "xs": "4px",
+                      "container-max": "1280px",
+                      "md": "16px",
+                      "lg": "24px"
+              },
+              "fontFamily": {
+                      "code-mono": ["jetbrainsMono"],
+                      "display-lg": ["Bahnschrift"],
+                      "body-bold": ["Inter"],
+                      "body-sm": ["Inter"],
+                      "body-base": ["Inter"],
+                      "headline-md": ["Bahnschrift"],
+                      "display-xl": ["Bahnschrift"],
+                      "label-caps": ["Inter"]
+              },
+              "fontSize": {
+                      "code-mono": ["12px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                      "display-lg": ["36px", {"lineHeight": "1.1", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "body-bold": ["14px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                      "body-sm": ["14px", {"lineHeight": "1.4", "fontWeight": "400"}],
+                      "body-base": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "headline-md": ["24px", {"lineHeight": "1.3", "letterSpacing": "0", "fontWeight": "600"}],
+                      "display-xl": ["48px", {"lineHeight": "1.0", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                      "label-caps": ["12px", {"lineHeight": "1.2", "letterSpacing": "0.05em", "fontWeight": "700"}]
+              }
+            },
+          },
+        }
+      </script>
+</head>
+<body class="flex flex-col">
+<canvas id="shader-canvas" width="1280" height="1024"></canvas>
+<header class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md border-b border-technical-line">
+<div class="flex justify-between items-center px-gutter py-md max-w-container-max mx-auto">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 bg-secondary-container flex items-center justify-center rounded-lg shadow-[0_0_15px_rgba(62,35,206,0.3)]">
+<span class="material-symbols-outlined text-on-secondary-container text-headline-md" style="font-variation-settings: 'FILL' 1;">description</span>
+</div>
+<h1 class="font-display-lg text-headline-md text-neon-acid tracking-tight glitch-effect">Parserly</h1>
+<div class="hidden md:flex h-6 w-px bg-technical-line mx-sm"></div>
+<span class="hidden md:block font-body-sm text-on-surface-variant">Criar acesso com Google ou link</span>
+</div>
+<nav class="flex items-center gap-lg">
+<div class="flex items-center gap-sm px-md py-sm bg-surface-container-high rounded-full border border-technical-line">
+<span class="material-symbols-outlined text-neon-acid text-body-base" style="font-variation-settings: 'FILL' 1;">shield</span>
+<span class="font-body-bold text-body-sm text-on-surface">Privacidade</span>
+</div>
+</nav>
+</div>
+</header>
+<main class="flex-grow flex items-center justify-center pt-32 pb-xl px-gutter max-w-container-max mx-auto w-full">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-xl items-center w-full">
+<section class="lg:col-span-7 flex flex-col gap-lg animate-fade-up">
+<div class="inline-flex items-center gap-sm px-md py-unit bg-surface-container-highest/50 rounded-lg border border-technical-line w-fit">
+<span class="material-symbols-outlined text-warning-amber text-body-sm">lock</span>
+<span class="font-label-caps text-on-surface text-label-caps uppercase">Conta protegida</span>
+</div>
+<div class="flex flex-col gap-sm">
+<h2 class="font-display-xl text-display-xl-mobile md:text-display-xl leading-none glitch-effect">
+                        Crie seu acesso.<br>
+                        Continue sua <span class="text-neon-acid glow-text">análise.</span>
+</h2>
+<p class="font-body-base text-on-surface-variant max-w-md mt-md">
+                        Use Google para criar sua conta rapidamente ou receba um link por e-mail para preservar sua quota e continuar sem senha.
+                    </p>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-md mt-lg">
+<div class="blueprint-card p-md rounded-lg group">
+<p class="font-label-caps text-on-surface-variant text-label-caps mb-sm">Cadastro</p>
+<h4 class="font-display-lg text-headline-md text-neon-acid">Google</h4>
+</div>
+<div class="blueprint-card p-md rounded-lg border-l-4 border-l-warning-amber">
+<p class="font-label-caps text-on-surface-variant text-label-caps mb-sm">Alternativa</p>
+<h4 class="font-display-lg text-headline-md text-warning-amber leading-tight">link por e-mail</h4>
+</div>
+<div class="blueprint-card p-md rounded-lg">
+<p class="font-label-caps text-on-surface-variant text-label-caps mb-sm">Checkout</p>
+<h4 class="font-display-lg text-headline-md text-on-surface">PIX</h4>
+</div>
+</div>
+</section>
+<section class="lg:col-span-5 flex justify-center animate-fade-up delay-200">
+<div class="blueprint-card p-xl rounded-xl w-full max-w-md shadow-2xl relative overflow-hidden">
+<div class="absolute -top-16 -right-16 w-32 h-32 bg-neon-acid/10 blur-3xl rounded-full"></div>
+<div class="flex justify-between items-start mb-lg">
+<div class="flex flex-col">
+<span class="text-neon-acid font-body-bold text-body-sm mb-unit">Identificação segura</span>
+<h3 class="font-display-lg text-display-lg text-on-surface">Criar acesso</h3>
+</div>
+<span class="material-symbols-outlined text-neon-acid text-headline-md">verified_user</span>
+</div>
+<div class="space-y-lg">
+<label class="flex gap-md p-md bg-surface-container-low/50 rounded-lg border border-technical-line cursor-pointer hover:border-on-surface-variant transition-colors group">
+<div class="relative flex items-center">
+<input class="peer h-5 w-5 bg-transparent border-technical-line text-neon-acid rounded-sm focus:ring-neon-acid focus:ring-offset-0 focus:ring-offset-transparent" type="checkbox">
+</div>
+<div class="flex flex-col">
+<span class="font-body-sm text-on-surface">Li e concordo com os termos da <a class="text-neon-acid underline decoration-neon-acid/30 hover:decoration-neon-acid transition-all" href="#">Política de Privacidade</a> do Parserly.</span>
+<span class="font-code-mono text-on-surface-variant text-[10px] mt-sm leading-relaxed opacity-60 uppercase">O aceite é obrigatório para criar uma conta.</span>
+</div>
+</label>
+<button class="w-full bg-white text-surface font-body-bold py-md px-lg rounded-lg flex items-center justify-center gap-md glow-button hover:bg-neutral-100 transition-colors">
+<svg class="w-5 h-5" viewBox="0 0 24 24">
+<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
+<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
+<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"></path>
+<path d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
+</svg>
+<span class="text-body-base">Cadastrar com Google</span>
+<span class="material-symbols-outlined text-body-base ml-auto">east</span>
+</button>
+<div class="relative py-md">
+<div class="absolute inset-0 flex items-center">
+<div class="w-full border-t border-technical-line"></div>
+</div>
+<div class="relative flex justify-center text-label-caps">
+<span class="bg-surface/50 backdrop-blur px-md text-on-surface-variant font-label-caps uppercase">ou use e-mail</span>
+</div>
+</div>
+<div class="flex flex-col gap-sm">
+<label class="font-body-bold text-body-sm text-on-surface" for="email">E-mail</label>
+<div class="input-well rounded-lg px-md py-md flex items-center gap-md">
+<span class="material-symbols-outlined text-on-surface-variant">mail</span>
+<input class="bg-transparent border-none p-0 focus:ring-0 text-on-surface font-body-base w-full placeholder:text-surface-variant" id="email" placeholder="voce@empresa.com" type="email">
+</div>
+</div>
+<button class="w-full bg-surface-container-highest text-on-surface/50 font-body-bold py-md px-lg rounded-lg flex items-center justify-center gap-md border border-technical-line hover:border-neon-acid hover:text-neon-acid transition-all duration-300">
+<span class="material-symbols-outlined text-body-base">send</span>
+<span class="text-body-base">Enviar link de acesso</span>
+</button>
+</div>
+</div>
+</section>
+</div>
+</main>
+<footer class="w-full py-xl px-gutter border-t border-technical-line/20 mt-auto bg-surface/50 backdrop-blur-sm animate-fade-up delay-300">
+<div class="max-w-container-max mx-auto flex flex-col md:flex-row justify-between items-center gap-lg">
+<div class="flex items-center gap-md opacity-60">
+<span class="font-code-mono text-on-surface-variant text-xs">PARSERLY_v2.4.0-STABLE</span>
+<span class="w-1.5 h-1.5 bg-neon-acid rounded-full animate-pulse"></span>
+<span class="font-code-mono text-neon-acid text-xs">SYSTEM_ONLINE</span>
+</div>
+<div class="flex gap-lg">
+<a class="font-body-sm text-on-surface-variant hover:text-neon-acid transition-colors" href="#">Termos</a>
+<a class="font-body-sm text-on-surface-variant hover:text-neon-acid transition-colors" href="#">Cookies</a>
+<a class="font-body-sm text-on-surface-variant hover:text-neon-acid transition-colors" href="#">Ajuda</a>
+</div>
+<p class="font-body-sm text-on-surface-variant text-xs">© 2024 Parserly Technologies Inc.</p>
+</div>
+</footer>
+<script>
+    // WebGL Shader Setup
+    const canvas = document.getElementById('shader-canvas');
+    const gl = canvas.getContext('webgl');
+
+    const vertexShaderSource = `
+        attribute vec2 position;
+        varying vec2 v_texCoord;
+        void main() {
+            v_texCoord = position * 0.5 + 0.5;
+            v_texCoord.y = 1.0 - v_texCoord.y;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    `;
+
+    const fragmentShaderSource = `
+        precision highp float;
+        varying vec2 v_texCoord;
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;
+
+        float grid(vec2 uv, float spacing) {
+            vec2 grid = abs(fract(uv / spacing - 0.5) - 0.5) / (fwidth(uv.x / spacing) + 0.01);
+            return 1.0 - min(min(grid.x, grid.y), 1.0);
+        }
+
+        void main() {
+            vec2 uv = v_texCoord;
+            vec2 mouse = u_mouse / u_resolution;
+            
+            vec3 color = vec3(0.043, 0.043, 0.047); 
+            vec3 accent = vec3(0.27, 1.0, 0.45); 
+            
+            float g1 = grid(uv, 0.1);
+            color += accent * g1 * 0.05;
+            
+            float g2 = grid(uv, 0.02);
+            color += accent * g2 * 0.02;
+            
+            float d = distance(uv, mouse);
+            float glow = smoothstep(0.4, 0.0, d);
+            color += accent * glow * 0.12;
+            
+            float scanline = sin(uv.y * 10.0 + u_time * 2.0) * 0.01;
+            color += accent * scanline * glow;
+            
+            float vignette = smoothstep(1.5, 0.4, length(uv - 0.5));
+            color *= vignette;
+            
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    function createShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        return shader;
+    }
+
+    const program = gl.createProgram();
+    gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vertexShaderSource));
+    gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource));
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+
+    const positionLocation = gl.getAttribLocation(program, "position");
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+    const timeLoc = gl.getUniformLocation(program, "u_time");
+    const resLoc = gl.getUniformLocation(program, "u_resolution");
+    const mouseLoc = gl.getUniformLocation(program, "u_mouse");
+
+    let mouseX = 0, mouseY = 0;
+    window.addEventListener('mousemove', (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+    });
+
+    function render(time) {
+        if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+
+        gl.uniform1f(timeLoc, time * 0.001);
+        gl.uniform2f(resLoc, canvas.width, canvas.height);
+        gl.uniform2f(mouseLoc, mouseX, mouseY);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+
+    // Form logic
+    const emailInput = document.getElementById('email');
+    const submitBtn = document.querySelectorAll('button')[1];
+
+    emailInput.addEventListener('input', (e) => {
+        if(e.target.value.includes('@') && e.target.value.length > 5) {
+            submitBtn.classList.remove('text-on-surface/50');
+            submitBtn.classList.add('text-on-surface', 'border-neon-acid');
+        } else {
+            submitBtn.classList.add('text-on-surface/50');
+            submitBtn.classList.remove('text-on-surface', 'border-neon-acid');
+        }
+    });
+</script>
+</body></html>

@@ -37,6 +37,7 @@ import { ALL_FEATURES_PERMISSION } from "@/types/auth";
 import { AnalysisReport } from "./analysis-report";
 import { Dropzone } from "./dropzone";
 import { PaywallModal } from "./paywall-modal";
+import { TechnicalShader } from "@/components/shared/technical-shader";
 
 type SubmissionMode = "manual" | "after-payment";
 type AnalysisRequestStep = "quota" | "analysis";
@@ -552,9 +553,11 @@ export function DashboardClient({
   }, []);
 
   return (
-    <main className="relative min-h-screen overflow-hidden px-4 py-5 text-paper sm:px-6 lg:px-8">
+    <>
+      <TechnicalShader />
+      <main className="technical-page min-h-screen px-4 py-5 text-paper sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-7">
-        <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-line/60 pb-4 text-xs text-paper/60">
+        <nav className="blueprint-surface -mx-4 flex flex-wrap items-center justify-between gap-3 border-y border-line/75 px-4 py-3 text-xs text-paper/60 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-violet text-paper shadow-glow">
               <FileSearch className="h-5 w-5" aria-hidden="true" />
@@ -635,7 +638,7 @@ export function DashboardClient({
                   Entrar
                 </a>
                 <a
-                  href="/login?intent=registration"
+                  href="/cadastro"
                   className={`focus-ring inline-flex min-h-10 items-center gap-2 rounded-md border border-line/70 bg-night px-3 py-2 text-paper/75 transition hover:border-acid/50 hover:bg-fog ${CONTROL_MOTION_CLASS}`}
                 >
                   <UserPlus className="h-4 w-4" aria-hidden="true" />
@@ -702,7 +705,7 @@ export function DashboardClient({
             {dashboardMetrics.map((metric) => (
               <div
                 key={metric.label}
-                className="rounded-md border border-line/70 bg-graphite/90 p-4"
+                className="blueprint-card rounded-md border border-line/70 bg-graphite/80 p-4"
               >
                 <p className="text-xs font-semibold text-paper/60">{metric.label}</p>
                 <p className="mt-2 font-display text-2xl font-semibold text-copper">
@@ -719,7 +722,7 @@ export function DashboardClient({
             <section
               id="upload-panel"
               aria-labelledby="upload-title"
-              className="rounded-md border border-line/75 bg-graphite/95 p-5"
+              className="blueprint-card blueprint-surface rounded-md border border-line/75 p-5 shadow-panel"
             >
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
@@ -806,7 +809,7 @@ export function DashboardClient({
           </div>
 
           <div
-            className="flex min-w-0 flex-col rounded-md border border-line/75 bg-graphite/90 p-5"
+            className="blueprint-card blueprint-surface flex min-w-0 flex-col rounded-md border border-line/75 p-5 shadow-panel"
             aria-busy={isSubmitting}
           >
             <div
@@ -844,7 +847,8 @@ export function DashboardClient({
         onChargeExpired={handlePixChargeExpired}
         onPaymentConfirmed={handlePaymentConfirmed}
       />
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -1392,4 +1396,3 @@ function isAbortError(error: unknown) {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-

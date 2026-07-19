@@ -28,6 +28,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/login",
+    "/cadastro",
     "/auth/verify",
     "/auth/google/callback",
     "/api/v1/auth/google/start"
